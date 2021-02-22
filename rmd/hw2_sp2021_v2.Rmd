@@ -1,7 +1,7 @@
 ---
 title: "STAT 571/701 Modern Data Mining, HW 2"
 author:
-- Maddie Bannon
+- Maddie Bannon  ## TEST TEST TEST TEST TEST TEST ###
 - Chris Coelho
 - Charles Lachapelle 
 date: 'Due: 11:59 PM,  Sunday, 02/28'
