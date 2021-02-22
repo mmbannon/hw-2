@@ -1,9 +1,9 @@
 ---
 title: "STAT 571/701 Modern Data Mining, HW 2"
 author:
-- Group Member 1
-- Group Member 2
-- Group Member 3
+- Maddie Bannon
+- Chris Coelho
+- Charles Lachapelle 
 date: 'Due: 11:59 PM,  Sunday, 02/28'
 output:
   pdf_document:
