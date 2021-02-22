@@ -1,8 +1,8 @@
 ---
 title: "STAT 571/701 Modern Data Mining, HW 2"
 author:
-- Maddie Bannon  ## TEST TEST TEST TEST TEST TEST ###
-- Chris Coelho ## Did we make it work!? Made some changes here ###
+- Maddie Bannon 
+- Chris Coelho 
 - Charles Lachapelle 
 date: 'Due: 11:59 PM,  Sunday, 02/28'
 output:
@@ -30,7 +30,7 @@ knitr::opts_chunk$set(echo = FALSE, fig.width=8, fig.height=4)
 options(scipen = 0, digits = 3)  # controls base R output
 # check if you have ISLR package, if not, install it
 if(!require('pacman')) {install.packages('pacman')}
-pacman::p_load(ISLR, tidyverse, data.table) # add the packages needed
+pacman::p_load(ISLR, tidyverse, data.table, skimr, ggplot2) # add the packages needed
 ```
 
 
@@ -128,6 +128,26 @@ The following 10 questions are answered as 1: strongly agree, 2: agree, 3: disag
 ## Data preparation
 
 Load the data. Do a quick EDA to get familiar with the data set. Pay attention to the unit of each variable. Are there any missing values?
+
+
+
+```{r}
+SE_data <- read.csv("data/NLSY79.csv")
+```
+
+
+```{r}
+#identifying missing variables 
+skim(SE_data)
+glimpse(SE_data)
+summary(SE_data)
+
+SE_data %>%
+  summarise(na = sum(is.na.data.frame(SE_data)))
+
+
+```
+
 
 
 ## Self esteem evaluation

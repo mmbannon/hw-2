@@ -1,0 +1,1250 @@
+---
+title: "Principal Component Analysis"
+author: "Modern Data Mining"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    code_folding: show
+    highlight: haddock
+    number_sections: yes
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '4'
+urlcolor: blue
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = 'center')
+options(scipen = 0, digits = 3) 
+if(!require('pacman')) {
+  install.packages('pacman')
+}
+pacman::p_load(tidyverse, dplyr, skimr, factoextra, corrplot, ggbiplot)
+```
+
+\tableofcontents
+
+# Objectives {-}
+
+Massive data is easily available to us. How can we efficiently extract important information from a large number of features or variables which will possess the following nice properties: 
+
+1) **Dimension reduction/noise reduction**: They are "closed" to the original variables but only with a few newly formed variables.
+2) **Grouping variables/subjects efficiently**: They will reveal insightful grouping structures. 
+3) **Visualization**: we can display high dimensional data. 
+
+Principle Component Analysis is a powerful method to extract low dimension variables. One may search among all linear combinations of the original variables and find a few of them to achieve the three goals above. Each newly formed variable is called a Principle Component. PCA is closely related to Singular Value Decomposition (SVD). Both PCA and Singular Value Decomposition are successfully applied in many fields such as face recognition, recommendation system, text mining, Gene array analyses among others. PCA is unsupervised learning. There will be no responses. It works well in clustering analyses. In addition, PCs can be used as input in supervised learning as well. 
+
+In this lecture, we analyze ASVAB tests (Armed Services Vocational Aptitude Battery) to see how can we summarize many scores of different people using PCA. In addition, PCA on test scores also reveals difference between males and females: while the total test scores are similar, females are strong in intelligence and males demonstrate better dexterity skills. 
+
+## PCA: Principal Component Analysis {-}
+
+- Read: Chapter 6.3 and Chapter 10.2 
+
+- Dimension reduction
+    + capture the main features 
+    + reduce the noise hidden in the data
+    + visualization of large dimension
+
+- PC's interpretations
+    + The best low dimension of linear approximation to the data (or closest to the data)
+    + The direction of linear combination which has largest variance
+    + We may take a small number of PCs as a set of input to other analyses
+
+
+## Outline  {-}
+
+1. Case Study: ASVAB tests
+  (Armed Services Vocational Aptitude Battery) 
+
+2. PCA
+    + PC scores
+    + PC loadings
+    + PVE: determine the number of PC's 
+    + biplot: display the data (try ggbiplot())
+    + `prcomp()`: PCA function
+
+3. Appendices: 
+    * Appendix 1: formal definition of PC's
+    * Appendix 2: PCA and Eigen decomposition of Correlation matrix
+    * Appendix 3. PCs and SVD
+   
+
+
+# Case Study:  How people differ in intelligence?
+
+## Background about ASVAB/AFQT 
+
+**ASVAB** ([Armed Services Vocational Aptitude Battery](https://www.goarmy.com/learn/understanding-the-asvab.html)) tests have been used as a screening test for those who want to join the army or other jobs. It helps to determine which army jobs are appropriate for applicants. No preparation is needed. 
+
+
+**ASVAB has the following components:**
+
++ 10 tests: Science, Arith (Arithmetic reasoning), Word (Word knowledge), Parag (Paragraph comprehension), Numer (Numerical operation), Coding (Coding speed), Auto (Automotive and Shop information), Math (Math knowledge), Mechanic (Mechanic Comprehension) and Elec (Electronic information).
+
++ [AFQT](https://afqttest.com/) (Armed Forces Qualifying Test) is a combination of Word, Parag, Math and Arith.
+
++ Based on AFQT, one may qualify for service branch requirement: Army 31, Navy 35, Marines 31, Air Force 36, and Coast Guard 45,(out of 100 which is the max!) 
+
+**Our goal**: 
+
++ How can we summarize the set of tests and grab main information about each one's intelligence/abilities efficiently.
+
++ How AFQT is formed? 
+
+
+**NLSY79 study and data:**
+
+Data `IQ.csv` is a subset of individuals from the 1979 National Longitudinal Study of 
+Youth (NLSY79) survey who were re-interviewed in 2006. Information on family, personal demographic such as gender, race and education level, plus a set of ASVAB (Armed Services Vocational Aptitude Battery) test scores, taken in 1981, are available. In addition, a set of self-evaluated self-esteem scores and income in 2015 are also included in this dataset. The data is very interesting on its own.
+
+
+**Note:** One of the original study goals is to see how intelligence relates to one's future successes measured by income in 2005 and self-esteem scores. 
+
+# Data Prep and EDA
+
+**Get a quick look at the data**
+```{r, data.full.skim}
+data.full <- read.csv("IQ.Full.csv")  
+dim(data.full) #str(data.full)
+names(data.full)
+```
+There are 32 variables with 2584 subjects/people. Many variables are coded as numeric but categorical by nature. For example, `Imagazine`, `Inewspaper` and `Ilibrary` are `yes`, `no` as values. There seems to be no missing values.
+
+Our focus lies on analyzing `ASVAB` scores. We skip interesting EDA for now. 
+
+
+# AFQT tests: Word, Math, Parag and Arith
+
+As one important summary of the `ASVAB` scores, AFQT scores combining `Word`, `Math`, `Parag` and `Arith` is also reported for each test taker. 
+
+
+**Question:** 
+
+i) How can we best **capture the performance** using one or two scores based on the four tests?
+ii) Can we separate people with good language skills or math skills? 
+iii) How is AFQT calculated? Is it merely the total scores of the four tests?  
+              
+              
+**Note:**    
+
+This is similar to the creation of SP500, a weighted index based on 500 stocks. 
+
+
+**A subset:** For simplicity we take a subset of 50 subjects and only include the `AFQT` and the four tests associated with it. 
+```{r AFQT.sub, results='hide'}
+AFQT.full <- data.full[, c("Subject","Word","Parag", "Math", "Arith", "AFQT", "Gender")]
+# full data set of the AFQT scores, AFQT and Gender
+set.seed(10) # make sure the same subset is generated each time   
+AFQT.sub <- data.full[sample(nrow(data.full), 50, replace=FALSE), c("Subject","Word","Parag", "Math", "Arith", "AFQT", "Gender")] 
+## dplyr way:
+# set.seed(10)
+# AFQT.sub <- data.full %>% sample_n(50, replace = F) %>%
+#   select(Subject,Word, Parag, Math, Arith, AFQT)
+str(AFQT.sub) 
+summary.AFQT <- skim(AFQT.sub)
+# names(summary.AFQT) # see skim's output
+# summary.AFQT %>% select(skim_variable, numeric.mean, numeric.sd, numeric.hist) 
+# only need mean, sd and hist
+``` 
+The four tests have different means and different standard deviations. 
+
+**Is `AFQT` the sum of the four test scores?** Not really!
+
+```{r AFQT.total}
+plot(x = AFQT.sub$AFQT, 
+     y = rowSums(AFQT.sub %>% select(Word, Parag, Math, Arith)),
+     xlab = "AFQT", 
+     ylab="Total of the four tests")
+
+cor(AFQT.sub$AFQT, rowSums(AFQT.sub %>% select(Word, Parag, Math, Arith)))
+```
+
+For simplicity we give names for each person in the subset.
+```{r, rename each subject in sample, results = "hide"}
+rownames(AFQT.sub)  # label for each person
+rownames(AFQT.sub) <-  paste("p", seq(1:nrow(AFQT.sub)), sep="")  
+# reassign everyone's labels to be shorter.
+rownames(AFQT.sub)
+
+data.AFQT <- AFQT.sub %>% select(Word, Parag)
+```
+
+## Motivations/Interpretations of PCA
+
+### PCA for only two tests 
+
+Let us focus on Word and Parag first. We want to use one aggregated score or weighted sum of two scores with the following desirable properties:
+
+1. The new score is weighted sum of Word and Parag, i.e., a linear combination of the two.
+2. The two scores should be close to the newly formed one score.
+
+In another word, we are looking for a line going through the cloud of the scatter plot of Word vs. Parag with minimum overall perpendicular distance. 
+
+### Geometric interpretations
+
+The crux of PCA can be captured simply by a plot. Focus on the plots in this section. (Codes are hidden on propose. **YOU DON'T NEED TO KNOW THE CODES used to produce plots in this section!!!!**)
+
+To demonstrate what are PC's and the geometric properties of PCA, let us look at the scatter plots with centered word and parag scores. I.e., we subtract word by its mean and parag by its mean as well.We call this process centering the data. Positive centered score implies the raw score is above the mean and below the mean if it is negative. 
+
+In the following R-chunk, we first center the two scores then make a scatter plot. 
+
+```{r center word parag}
+parag.word.centered <- AFQT.sub %>% select(Word, Parag) %>%
+  mutate(word_centered = Word - mean(Word),
+         parag_centered = Parag - mean(Parag))
+# Making word and parag by centering each score.
+
+# or use scale() to center the data
+parag.word.centered <- scale(AFQT.sub[, c("Parag", "Word")], 
+                                           center = T, scale = F)
+parag.word.centered <- as.data.frame(parag.word.centered)
+# make centered data as a data frame
+```
+Notice the original and centered data only differ by the mean values while keep the same standard deviations. 
+
+```{r comp centered data and original data, results='hide'}
+round(sapply(parag.word.centered,mean), 3) # col mean with 3 decimals
+sapply(AFQT.sub %>% select(Word, Parag), mean) # col mean
+sapply(parag.word.centered,sd) #col sd
+sapply(AFQT.sub %>% select(Word, Parag), sd) # col sd
+``` 
+
+Look at the scatter plot of centered word and parag:
+```{r}
+parag.word.centered %>%
+  ggplot(aes(x = Parag, y = Word)) + 
+  geom_point() + 
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  theme_bw() +
+  coord_fixed(ratio = 1, xlim = c(-20, 10), ylim = c(-20, 10)) +
+  ggtitle("Centered Parag vs Word")
+```
+
+
+The following scatter plot of Word vs. Parag illustrates what is a desirable linear line we are looking for: **the total squared perpendicular distance from each point to the line should be minimized.**
+
+**No need to go through the chunks below. Focus on the plot.**
+```{r perpendicular coordinate, echo = F}
+perp.coord <- function(x0, y0, intercept, slope) {
+  # finds endpoint for a perpendicular segment from the point (x0,y0) to the line
+  # remember the product of the slopes of perpendicular line is 1
+  x1 <- (x0 + slope*y0 - intercept*slope)/(1 + slope^2)
+  y1 <- intercept + slope*x1
+  list(x0=x0, y0=y0, x1=x1, y1=y1)
+}
+```
+
+```{r echo=FALSE, warning=FALSE}
+# PCA without scaling
+pc.parag.word.centered <- prcomp(parag.word.centered, scale. = F)
+
+# get the slope
+slope <- pc.parag.word.centered$rotation[2,1] / pc.parag.word.centered$rotation[1,1]
+
+# get the loadings
+loadings <- data.frame(x = abs(pc.parag.word.centered$rotation[1,1]),
+                       y = abs(pc.parag.word.centered$rotation[2,1]))
+
+# get the perpendicular coordinate on the line
+perp.segment <- perp.coord(parag.word.centered$Parag,
+                           parag.word.centered$Word, 
+                           intercept = 0, slope)
+perp.segment <- as.data.frame(perp.segment)
+perp.segment <- perp.segment %>%
+  mutate(id = paste0("p", 1:nrow(parag.word.centered)),
+         pc.score = x0 * loadings$x + y0 * loadings$y)
+
+# get a point
+perp.segment.point <- perp.segment %>% filter(id == "p11")
+
+# 
+p <- ggplot(data = parag.word.centered, 
+            aes(x = Parag, y = Word)) + 
+  geom_point(alpha = .3) +
+  geom_abline(intercept = 0,
+              slope = slope) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_segment(data = perp.segment.point,
+               aes(x = 0, y = 0, xend = x1, yend = y1), 
+               colour = "red", size = 2) +
+  geom_segment(data = perp.segment.point,
+               aes(x = 0, y = 0, xend = x0, yend = y0), 
+               colour = "darkgreen", linetype = "dashed") +
+  geom_segment(data = perp.segment.point, 
+               aes(x = x0, y = y0, xend = x1, yend = y1, label = pc.score), 
+               colour = "blue", size = 2) +
+  geom_point(data = perp.segment.point, 
+             aes(x = x0, y = y0), 
+             colour = "black", size = 5) +
+  geom_point(data = perp.segment.point, 
+             aes(x = x1, y = y1, label = pc.score), 
+             colour = "red", size = 5, shape = 4) +
+  geom_segment(data = perp.segment, 
+               aes(x = x0, y = y0, xend = x1, yend = y1), 
+               colour = "blue", alpha = .3) +
+  geom_segment(data = loadings,
+               aes(x = 0, y = 0, 
+                   xend = x, 
+                   yend = y), 
+               colour = "red", 
+               arrow = arrow()) +
+  geom_text(data = perp.segment.point,
+            aes(x = x0 + 3, y = y0, label = paste("(",x0, ",",y0,")"))) +
+  geom_text(data = perp.segment.point,
+            aes(x = x1 + 3, y = y1, 
+                label = paste("PC score:", round(pc.score, 2))),
+            col = "red") +
+  geom_text(data = loadings,
+            aes(x = x*2-3,
+                y = y*2, 
+                label = paste0("Loadings:\n", "(",round(x,2), ", ",round(y,2),")")),
+            col = "red") +
+  theme_bw() +
+  coord_fixed(ratio = 1, xlim = c(-2, 7), ylim = c(-2, 7)) +
+  ggtitle("Principle Component 1 of Parag vs Word (centered, unscaled)")
+
+plotly::ggplotly(p)
+```
+
+PC1, first principle component: the linear combination of the two scores which minimizes the total squared perpendicular distance. That line is described by (`procom` function is used to produce all relevant quantities.)
+
+- PC1 loadings: **(0.3, 0.96)** which describes the direction of the line. 
+- PC1 scores: the projection score  **0.3 * Parag_centered + .96 * Word_centered**.
+
+As an example, for the person with Parag_centered = 4.58 and Word_centered = 5.08, the PC score is .3*4.58+.96*5.08 = 6.25   (It should be 6.21 as marked in the plot above due to rounding error)
+
+**How much information lost using PC1?**
+
+In stead of using word and parag we only use PC1's. We will lose on average Mean sum of squared distances. 
+
+
+### Two interpretations of PCA
+
+The above PC scores may have one problem: the two tests have different spread or standard deviation. Often we may want to find PC's among totally different variables with different units. In this case, it is a good idea to center and scale the data, by subtracting the mean and dividing the standard deviation for each test first, before performing PCA.
+
+```{r}
+parag.word.scaled.centered  <- as.data.frame(scale(AFQT.sub[, c("Parag", "Word")], 
+                                           center = T, scale = T))
+parag.word.scaled.centered %>%
+  ggplot(aes(x = Parag, y = Word)) + 
+  geom_point() + 
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  theme_bw() +
+  coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(-3, 3)) +
+  ggtitle("Centered and scaled Parag vs Word")
+```
+
+The following plot illustrate the relationship among three metrics:
+
+- Total sum of squares
+- Sum of squared errors
+- Variance of PC1
+
+Skip the codes but concentrating on the plot please: 
+```{r echo=FALSE, warning=FALSE}
+# PCA
+pc.parag.word <- prcomp(parag.word.scaled.centered)
+# get the slope
+slope <- pc.parag.word$rotation[2,1] / pc.parag.word$rotation[1,1]
+
+# get the loadings
+loadings <- data.frame(x = abs(pc.parag.word$rotation[1,1]),
+                       y = abs(pc.parag.word$rotation[2,1]))
+
+# get the perpendicular coordinate on the line
+perp.segment <- perp.coord(parag.word.scaled.centered$Parag,
+                           parag.word.scaled.centered$Word, 
+                           intercept = 0, slope)
+perp.segment <- as.data.frame(perp.segment)
+perp.segment <- perp.segment %>%
+  mutate(id = paste0("p", 1:nrow(parag.word.centered)),
+         pc.score = x0 * loadings$x + y0 * loadings$y)
+
+# get a point
+perp.segment.point <- perp.segment %>% filter(id == "p11")
+
+# 
+p <- ggplot(data = parag.word.scaled.centered, 
+            aes(x = Parag, y = Word)) + 
+  geom_point(alpha = .3) +
+  geom_abline(intercept = 0,
+              slope = slope,
+              size = 1) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_segment(data = perp.segment.point,
+               aes(x = 0, y = 0, xend = x1, yend = y1), 
+               colour = "red", size = 2) +
+  geom_segment(data = perp.segment.point,
+               aes(x = 0, y = 0, xend = x0, yend = y0), 
+               colour = "darkgreen", linetype = "dashed") +
+  geom_segment(data = perp.segment.point, 
+               aes(x = x0, y = y0, xend = x1, yend = y1, label = pc.score), 
+               colour = "blue", size = 2) +
+  geom_point(data = perp.segment.point, 
+             aes(x = x0, y = y0), 
+             colour = "black", size = 5) +
+  geom_point(data = perp.segment.point, 
+             aes(x = x1, y = y1, label = pc.score), 
+             colour = "red", size = 5, shape = 3) +
+  geom_segment(data = perp.segment, 
+               aes(x = x0, y = y0, xend = x1, yend = y1), 
+               colour = "blue", alpha = .3) +
+  geom_segment(data = loadings,
+               aes(x = 0, y = 0, 
+                   xend = x, 
+                   yend = y), 
+               colour = "red", 
+               arrow = arrow()) +
+  geom_text(data = perp.segment.point,
+            aes(x = x0 + 1, y = y0, label = paste("(", round(x0,2), ",", round(y0,2), ")"))) +
+  geom_text(data = perp.segment.point,
+            aes(x = x1 + 1, y = y1, 
+                label = paste("PC score:", round(pc.score, 2))),
+            col = "red") +
+  geom_text(data = loadings,
+            aes(x = x,
+                y = y+1, 
+                label = paste0("Loadings:\n", "(", round(x,2), ", ",round(y,2),")")),
+            col = "red") +
+  theme_bw() +
+  coord_fixed(ratio = 1, xlim = c(-1, 2), ylim = c(-1, 2)) +
+  ggtitle("Principle Component 1 of Parag vs Word (centered, scaled)")
+
+plotly::ggplotly(p)
+```
+
+In the above plot we want to demonstrate the following beautiful geometric interpretation of PCA. 
+
+**Fact 1: A line which minimize the total squared distance must go through the origin (or sample means)**
+
+**Fact 2:**
+By the Pythagorean theorem, for any point: 
+
+$$\color{red}{\text{PC score}^2} + \color{blue}{\text{Perpendicular distance}^2} = \color{green}{\text{Distance to origin}^2}$$
+
+Adding all the terms for each point, we have the following striking relationship:
+
+
+$$\color{red}{\frac{1}{n-1} \text{Sum}(\text{PC score}^2 )} + \color{blue}{\frac{1}{n-1} \text{Sum}(\text{Perpendicular distance}^2)} = \color{green}{\frac{1}{n-1} \text{Sum}(\text{Distance to origin}^2)}$$
+
+Notice:
+
+1. $\color{green}{\text{Sum}(\text{Distance to origin}^2)}$ never changes.
+2. $\color{red}{\frac{1}{n-1} \text{Sum}(\text{PC score}^2 ) = Var(\text{PC scores})}$
+3. $\color{blue}{\frac{1}{n-1} \text{Sum}(\text{Perpendicular distance}^2) = \text{Mean squred errors}}$ 
+
+Hence, maximizing the variance of PC scores is equivalent to minimizing the mean squared error (perpendicular distances). Note that minimizing the mean *perpendicular* distances here is different from simple linear regression that minimizes the *vertical* distances between the linear line and points. Now we are ready to reveal two equivalent definitions of PC's:
+
+> **Definition 1:** The linear combination which minimizes the total squared perpendicular distance
+>
+> **Definition 2:** The linear combination with maximum variance or with largest spread
+
+The following chuck illustrate when the linear combination is of different weights or the line has a different slope the relationship the three sum of squared change exactly as we have shown above.
+
+Sum of squared errors increase, variance of the line decrees while the sum of the two never change. Of course when the line minimizes the sum of squared errors it also maximizes the variance of the PC scores which gives us the First Principle Component!
+
+We used `shiny` to make this illustration. Execute the following chunk, a separate window will pop out. By changing the slope of the line, you will see how the projection of points change and how the squared distance and variance change. Compare with the red PC component line. (Remember to kill the graph once you are done otherwise the following chunk will be running all the time.)
+
+```{r shiny, eval=FALSE, include=FALSE}
+pacman::p_load(grid, shiny)
+
+pca_slope <- pc.parag.word$rotation[2,1] / pc.parag.word$rotation[1,1]
+
+ui <- fluidPage(
+
+   # Application title
+   titlePanel("PCA"),
+
+   # Sidebar with a slider input for number of bins 
+   sidebarLayout(
+      sidebarPanel(
+         sliderInput(inputId = "slope", label = "Slope:",
+                     min = -5, max = 5, value = 0, 
+                     step = .2, animate = animationOptions(500)),
+         actionButton("reset_slope0", "Set slope to 0"),
+         actionButton("reset_slope", "Set slope to PCA"),
+         helpText("Mean squared error"),
+         textOutput("rss"),
+         helpText("Variance of PC"),
+         textOutput("var"),
+         helpText("Mean of squared distance"),
+         textOutput("sum")
+      ),
+
+      mainPanel(
+         plotOutput("pcaplot"),
+         plotOutput("pcaplot_rot")
+      )
+   )
+)
+
+
+server <- function(input, output, session) {
+  intercept <- 0
+  n <- nrow(parag.word.scaled.centered)
+  
+  perp.segment <- reactive({
+    as.data.frame(perp.coord(parag.word.scaled.centered$Parag,
+                             parag.word.scaled.centered$Word, 
+                             intercept = intercept, input$slope))
+  })
+  
+  output$pcaplot <- renderPlot({
+    ggplot(data = parag.word.scaled.centered, aes(x = Parag, y = Word)) + 
+      geom_point() +
+      geom_abline(intercept = 0,
+                  slope = pca_slope,
+                  col = "red") +
+      geom_abline(intercept = 0,
+                  slope = input$slope) +
+      geom_segment(data = perp.segment(), 
+                   aes(x = x0, y = y0, xend = x1, yend = y1), 
+                   colour = "blue") +
+      theme_bw() +
+      coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(-3, 3))
+  })
+  
+  output$pcaplot_rot <- renderPlot({
+    p <- ggplot(data = parag.word.scaled.centered, 
+                aes(x = Parag, y = Word)) + 
+      geom_point() +
+      geom_abline(intercept = 0,
+                  slope = pca_slope,
+                  col = "red") +
+      geom_abline(intercept = 0,
+                  slope = input$slope) +
+      geom_segment(data = perp.segment(), 
+                   aes(x = x0, y = y0, xend = x1, yend = y1), 
+                   colour = "blue") +
+      theme_bw() +
+      coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(-3, 3)) +
+      theme(plot.margin = margin(45, 45, 45, 45))
+    
+    print(p, vp = grid::viewport(angle=-360*(atan(input$slope)/2/pi)))
+  })
+  
+    
+  output$rss <- renderText({
+    perp.segment.coord <- perp.segment()  
+    sum(with(perp.segment.coord, (x1-x0)^2 + (y1-y0)^2))/(n-1)
+  })
+
+  output$var <- renderText({
+    perp.segment.coord <- perp.segment()  
+    sum(with(perp.segment.coord, x1^2 + y1^2))/(n-1)
+  })
+  
+  output$sum <- renderText({
+    perp.segment.coord <- perp.segment()  
+    sum(with(perp.segment.coord, x1^2 + y1^2))/(n-1) + sum(with(perp.segment.coord, (x1-x0)^2 + (y1-y0)^2))/(n-1)
+  })
+  
+  observeEvent(input$reset_slope0, {
+    updateNumericInput(session, "slope", value = 0)
+  })
+  
+  observeEvent(input$reset_slope, {
+    updateNumericInput(session, "slope", value = pca_slope)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+
+### Other Principle Components
+
+Once we find the leading principle component, we can look for the second linear combination of the Word and Parag such that the line goes through the data points with minimum squared distance or largest variance but with one constrain - the line needs to be perpendicular to the first principle component. We call that line, second Principle component. 
+
+By the definiton we know the variance of PC1 is larger variance of PC2. 
+
+The following plot shows how to find second principle compoment. 
+
+```{r second pc, echo=FALSE, warning=FALSE}
+# get PC2 slope
+sec.slope <- -1/slope
+
+# get the loadings
+sec.loadings <- data.frame(x = (pc.parag.word$rotation[1,2]),
+                       y = (pc.parag.word$rotation[2,2]))
+
+# get the perpendicular coordinate on the line
+sec.perp.segment <- perp.coord(parag.word.scaled.centered$Parag,
+                           parag.word.scaled.centered$Word, 
+                           intercept = 0, sec.slope)
+sec.perp.segment <- as.data.frame(sec.perp.segment) %>%
+  mutate(id = paste0("p", 1:nrow(parag.word.centered)),
+         pc.score = x0 * loadings$x + y0 * loadings$y)
+
+# get a point
+sec.perp.segment.point <- sec.perp.segment %>% filter(id == "p11")
+
+p2 <- ggplot(data = parag.word.scaled.centered, 
+            aes(x = Parag, y = Word)) + 
+  geom_point(alpha = .3) +
+  geom_abline(intercept = 0,
+              slope = slope,
+              size = 1) +
+  geom_abline(intercept = 0,
+              slope = sec.slope,
+              size = 1) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_segment(data = sec.perp.segment.point,
+               aes(x = 0, y = 0, xend = x1, yend = y1), 
+               colour = "red", size = 2) +
+  geom_segment(data = sec.perp.segment.point, 
+               aes(x = x0, y = y0, xend = x1, yend = y1, label = pc.score), 
+               colour = "blue", size = 2) +
+  geom_segment(data = sec.perp.segment.point,
+               aes(x = 0, y = 0, xend = x0, yend = y0), 
+               colour = "darkgreen", linetype = "dashed") +
+  geom_point(data = sec.perp.segment.point, 
+             aes(x = x0, y = y0), 
+             colour = "black", size = 5) +
+  geom_point(data = sec.perp.segment.point, 
+             aes(x = x1, y = y1, label = pc.score), 
+             colour = "red", size = 5, shape = 3) +
+  geom_segment(data = sec.perp.segment, 
+               aes(x = x0, y = y0, xend = x1, yend = y1), 
+               colour = "blue", alpha = .3) +
+  geom_segment(data = sec.loadings,
+               aes(x = 0, y = 0, 
+                   xend = x, 
+                   yend = y), 
+               colour = "red", 
+               arrow = arrow()) +
+  geom_text(data = sec.perp.segment.point,
+            aes(x = x0 + 1, y = y0, label = paste("(", round(x0,2), ",", round(y0,2), ")"))) +
+  geom_text(data = sec.perp.segment.point,
+            aes(x = x1 + 1, y = y1, 
+                label = paste("PC 2:", round(pc.score, 2))),
+            col = "red") +
+  geom_text(data = sec.loadings,
+            aes(x = x-.5,
+                y = y-.5, 
+                label = paste0("PC2 loadings:\n", "(", round(x,2), ", ",round(y,2),")")),
+            col = "red") +
+  geom_text(aes(x = 1.5, y = 2, 
+                label = "PC 1")) +
+  geom_text(aes(x = 2, y = -1.5, 
+                label = "PC 2")) +
+  theme_bw() +
+  coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(-2, 2)) +
+  ggtitle("Second Principle Component of Parag vs Word (centered, scaled)")
+
+plotly::ggplotly(p2)
+```
+
+
+
+
+If we only use PC1, we will lose some information contained in two scores. The error is described by Sum of squared error or we can use variance of the PC1. 
+
+If we use both PC1 and PC2 we do not lose any information at all. In another word the variance of PC1 plus variance of PC2 is exactly variance of word + variance of parag!
+
+We can have maximum 2 PCs when there are only two variables. 
+
+
+
+
+# Principal Component of Word, Math, Parag and Arith
+
+Our goal is to use less number of variables to capture the information contained in 4 scores. We hope using a few Principle components to capture the structure among all variables. Often the clustering information may appear in PC coordinates. If we are lucky enough we may discover clear interpretations of each PC's in terms of the original scores. In general we may lose interpretation from each score. 
+
+There will be no more than 4 PC's since there are only 4 variables. Each PC will be controlled by the loadings or the weights to each variable. All 4 sets of loadings are orthogonal with unit 1. All 4 PC's are also orthogonal or uncorrelated with decreasing variances. 
+
+**Question:**
+
+1) What does each PC score mean? 
+2) How many PC's should be used?
+3) What interesting facts can be revealed by PCs?
+
+
+## Find PC's and Loadings
+
+`prcomp()` is the main function used to give us all the loadings and PC's and variances of each PC. You will find simple, beautiful mathematics how PCA is done through eigen decomposition and SVD (Singular Value Decomposition) in Appendix. 
+
+
+To conduct PCA: 
+
+Step I: To find sensible PC's, we recommend to 
+
+   - center each variable by subtracting its mean
+   - scale each variable by dividing its sd (rather complex on this issue)
+   - prcomp() has an option to scale or not though we could use scale()
+   
+Step II: Run `prcomp()`
+
+   - Output all the loadings: one set for each PC's
+   - Obtain all PC scores
+   - Report the variances for each PC and for each original variable
+
+We next perform PCA's for four variables `Word`, `Parag`, `Math`, `Arith`. 
+```{r PCA AFQT, results="hold"}
+data.AFQT <- AFQT.sub %>% select(Word, Parag, Math, Arith)
+pc.4 <- prcomp(data.AFQT, scale=TRUE)  # by default, center=True but scale=FALSE!!!
+names(pc.4) #check output 
+# rotation: loadings
+# x: PC scores
+# sdev: standard 
+# pc.4$center
+```
+
+`prcomp()` outputs the following:
+
+- `$rotation`: loadings
+- `$x`: PC scores
+- `$sdev`: standard deviations of the four tests
+- `$center`: means of the four tests
+
+**Loadings**
+
+Each loadings give us a set of four numbers which determine the direction of each `line`. Let us take a look at the leading PC's loadings:
+
+```{r loading}
+pc.4.loading <- pc.4$rotation
+knitr::kable(pc.4.loading)
+```
+
+**Remark:**
+
+- Loadings are unique up to sign. For example PC1 loading can be (.51, .50, .5, .5) or 
+(-.51, -.50, -.5, -.5). Why so???
+- The magnitude of loadings tells us how much each variable contributes to the PC's. 
+
+**PC's**
+
+We can get PC's by taking the linear combination of loadings and variables as: 
+
+PC1= `r pc.4.loading[1,1]` Word_centered_scaled + `r pc.4.loading[2,1]` Parag_centered_scaled + 
+`r pc.4.loading[3,1]` Math_centered_scaled + `r pc.4.loading[4,1]` Arith_centered_scaled
+
+PC2= `r pc.4.loading[1,2]` Word_centered_scaled + `r pc.4.loading[2,2]` Parag_centered_scaled + 
+`r pc.4.loading[3,2]` Math_centered_scaled + `r pc.4.loading[4,2]` Arith_centered_scaled
+
+We will continue to get PC3, PC4. 
+
+All the PC's are computed. Each person will have four PC scores. Let us take PC's for the first 5 people
+```{r}
+knitr::kable(pc.4$x[1:5, ])
+```
+
+**Interpretations of loadings and PC's**
+
+Loadings determine contribution of each variable to the PC's. Loadings are also proportional to the correlations between PC's and each variables. 
+
+```{r}
+pc.4.loading
+```
+**PC1:** since the four loadings are approximately the same around.5 so PC1 is proportional to the total of the four scores. In another word:
+
+PC1 = .5 (Word_centered_scaled +  Parag_centered_scaled +  Math_centered_scaled +  Arith_centered_scaled)
+
+Higher PC1 => Higher weighted total score. 
+
+**PC2:** 
+
+PC2= .5 (Word_centered_scaled +  Parag_centered_scaled -  (Math_centered_scaled +  Arith_centered_scaled))
+
+
+- Approximately proportional to the difference between to sum of Math/Arith and sum of Word and Parag
+- If total scores are comparable, higher PC2 implies strong math talent while lower PC2 implies superior language ability
+
+
+
+Combine centered and scaled `Word`,  `Parag`,  `Math`,  `Arith` and `PC1`,  `PC2`,   `PC3`   `PC4`. We list a few people's scores and PCs. Can you calculate the PC's from the `Word`, `Parag`... `Arith` using the loadings? 
+```{r PC1 AFQT}
+AFQT.PC.Scores <- cbind(scale(data.AFQT, scale = TRUE), pc.4$x)
+   arrange(as.data.frame(AFQT.PC.Scores), desc(PC1)) %>%
+     head()
+```
+
+**Loadings and correlations between PC and each scores:**
+
+Loadings account for weights for each variable in the PC. They are in fact proportional to the correlation between PC to each score with sd(PC) as a factor. For example 
+
+Corr(PC1, data.AFQT.scale) = sd(PC1) $\times$ PC1_loadings  (Check this please)
+```{r}
+cor(pc.4$x[, 1], scale(data.AFQT, scale = TRUE))
+```
+
+
+## Scatter plot of PCs
+
+Often a scatter plot of PC's may reveal interesting informative. For example we know PC1 and PC2 have clear interpretaion, by plotting PC2 vs. PC1,  we can locate people with different strength. 
+
+```{r pc.4 pc1 vs. pc2}
+as.data.frame(pc.4$x) %>% 
+  ggplot(aes(x=PC1, y=PC2)) +
+  geom_point()+
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  ggtitle("PC2 vs. PC1 for AFQT") +
+  theme_bw()
+```
+
+People on the far right are high in total scores. First quadrant contains ones with strong math skills while people in the forth quadrant good in Language skills.
+
+
+## Properties of PC's and Loadings
+
+**All loadings are perpendicular and with unit 1**
+
+```{r}
+round(t(pc.4$rotation) %*% pc.4$rotation) # to check the loadings are unit 1
+# or
+colSums((pc.4$rotation)^2)
+```
+
+**var(PC1) > var(PC2) > ....** and they add up to be 4. Why so? 
+```{r}
+round((pc.4$sdev)^2, 2)  # Var(PC1), Var(PC2),...#sum((pc.4$sdev)^2)
+# knitr::kable(summary(pc.4)$importance)   
+```
+Notice var(PC1) is much larger than the rest of the variances. PC1 captures large amount of variability in the data.
+
+**All 4 PC sores are uncorrelated**
+```{r}
+round(cov(pc.4$x), 4) 
+```
+
+From the following pair-wise plots we see the variability of each PC's in a decreasing scale. 
+
+```{r}
+pairs(pc.4$x, xlim=c(-4, 4), ylim=c(-4, 4), col=rainbow(6), pch=16)
+```
+
+
+## Proportion of variance explained (PVE)
+
+One goal of principle component is to find as few as many PC's which have as large variances as possible. How many PC's are informative? We introduce the measurement of PVE: Proportion of Variance Explained as
+
+PVE=Var(PC's)/Total Variances
+
+We can calculate the PVE or get Proportion of variance from the output
+```{r}
+summary(pc.4)$importance  #notice it is from summary()
+```
+
+The summary reports standard deviations, PVE and Cumulative Proportions. 
+
+For example, the leading principle component explains `r summary(pc.4)$importance[2,1]` of the total variance.
+
+We also see clearly that variance of PC1 is larger than that of PC2 and etc.
+
+**Scree Plots**
+
+A scree plot of PVE or Cumulative PVE can help us to see how much variance is captured by each PC. 
+
+**Scree plot of variances:**
+```{r}
+plot(pc.4) # variances of each pc
+```
+
+**How many PC's to use?**
+
+We may look at the scree plot of PVE's and apply elbow rules: take the number of PC's when there is a sharp drop in the scree plot. 
+
+Here is the scree plot of PVE's.
+```{r}
+plot(summary(pc.4)$importance[2, ],  # PVE
+     ylab="PVE",
+     xlab="Number of PC's",
+     pch = 16, 
+     main="Scree Plot of PVE for AFQT")
+```
+**It indicates that two leading PC's should be enough** for certain purposes. 
+
+
+Lastly we may look at the cumulative variance explained by each PC
+
+```{r}
+plot(summary(pc.4)$importance[3, ], pch=16,
+     ylab="Cumulative PVE",
+     xlab="Number of PC's",
+     main="Scree Plot of Cumulative PVE for AFQT")
+```
+
+## biplot
+
+Visualize the PC scores together with the loadings of the original variables. They also reveal correlation structures among all variables. 
+```{r}
+lim <- c(-.4, .4) 
+biplot(pc.4,       # choices=c(2,4), 
+       xlim=lim,
+       ylim=lim,
+       main="Biplot of the PC's")
+abline(v=0, h=0)
+# x-axis: PC1 (prop)
+# y-axis: PC2
+# top x-axis: prop to loadings for PC1
+# right y-axis: prop to loadings for PC2
+# using argument of choices = c(1,3), we can explore scatter plots of other PC's
+
+```
+The biplot indicates
+
+- PC1 loadings are similar in magnitudes and with same signs
+- PC2 captures diff of total of math, arith and total of word and parag
+- math and arith are highly correlated so are word and parag!
+
+
+
+
+
+##Gender effects? 
+
+Are there systematic difference among men and women? By various plots of PC's we try to see any possible patterns. 
+```{r}
+as.data.frame(pc.4$x) %>% 
+  mutate(gender = AFQT.sub$Gender) %>%
+  ggplot(aes(x=PC1, y=PC2)) +    # Try other PC's vs. PC1, any patterns?
+  geom_point(aes(color=gender))+
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  ggtitle("PC2 vs. PC1 for AFQT") +
+  theme_bw()
+```
+Couldn't tell any relationship between Gender and AFQT
+
+
+**Lastly AFQT PC's and Gender:**
+
+So far the PCA is done for a subset of 50 subjects. Finally we bring all subjects and run PCA of over `AFQT` and `Gender`
+
+```{r PCA all AFQT}
+pc.4.all <- AFQT.full %>% select(Word, Parag, Arith, Math) %>%
+     prcomp(scale=TRUE)
+#pc.4.all$rotation
+as.data.frame(pc.4.all$x) %>% 
+  mutate(gender = AFQT.full$Gender) %>%
+  ggplot(aes(x=PC1, y=PC2)) +
+  geom_point(aes(color=gender))+
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  ggtitle("PC2 vs. PC1 for AFQT") +
+  theme_bw()
+```
+
+Questions:
+- What are the PC1 and PC2 loadings?
+- What are the interpretations of PC1 and PC2?
+- Do you see systematic difference of AFQT scores between men and women? 
+- How do you summarize the performance based on the above PC's plot? 
+
+
+## Summary
+
+1. To capture the main features of AFQT four scores we could use two newly formed PC scores:  
+
+   + PC1: Total scores (weighted)
+   + PC2: Difference of the math+arith and word+parag
+
+2. **What is AFQT score** reported? Might it be the PC1's of the four tests? Or is it similar to the total scores?
+
+```{r}
+cor(AFQT.full$AFQT, pc.4.all$x[, 1])
+total_no_weight <- AFQT.full %>%   # create total scores
+    mutate(total = Word+Parag+Math+Arith) %>%
+    select(total)
+cor(AFQT.full$AFQT, total_no_weight)
+
+```
+
+Final questions to ask: what happens if we run PCA without scaling? 
+
+PCA on AFQT without scaling
+```{r eval=FALSE}
+pc.4.no.scale <- prcomp(AFQT.full %>% select(-Subject, -AFQT, -Gender), scale = FALSE)
+pc.4.no.scale
+```
+
+What do you think?
+
+
+
+
+
+# PCA of SVABS
+
+SVABS contains 10 test scores. How can we use a few summary scores to capture some main features hidden in the 10 scores. How can we tell who is good in certain areas? Are there systematic difference between man and women in the SVABS tests?
+
+We will explore how well PCA's can answer all the questions raised. 
+
+## Leading PC's
+
+Now bring all the subjects with all 10 test scores in the following PCAs. We first list PC1 loadings in a decreasing order. Roughly speaking, the loadings are similar indicating that PC1 capture the total scores (scaled by the standard deviations for each test.)
+```{r}
+pca.all <- prcomp(data.full[,  c(11:20)], scale=TRUE)   # all the tests
+pca.all.loading <- data.frame(tests=row.names(pca.all$rotation), pca.all$rotation) # loadings and with test names
+pca.all.loading %>% select(tests, PC1, PC2) %>%
+  arrange(-PC1)
+```
+
+We next look into the PC2 loadings. 
+```{r}
+pca.all.loading <- data.frame(tests=row.names(pca.all$rotation), pca.all$rotation) # loadings and with test names
+pca.all.loading %>% select(tests, PC1, PC2, PC3) %>%
+  arrange(-PC2)
+```
+It captures the difference between the total of `coding`,`Numer`, `Parag` , `Math` and the total of `Mechanic`, `Elec` and `Auto`. 
+
+**PC1:** Proportional to the total scores.
+**PC2:** Difference between intelligence(such as math/comprehensive understanding?) and dexterity 
+
+## PVE
+
+How much variations do leading PC's account for? 
+```{r}
+summary(pca.all)$importance
+```
+
+
+## Biplot
+
+To visualize the loadings and the correlations among test scores, here it is the biplot
+
+```{r}
+biplot(pca.all, cex=0.5, xlim=c(-.08, .08),
+       ylim=c(-.08, .08),
+       main="PC's for all the 10 tests")
+abline(h=0, v=0, col="red", lwd=2)
+```
+
+## How Gender plays the role here?
+
+```{r}
+as.data.frame(pca.all$x) %>%
+  mutate(gender = data.full$Gender) %>%
+  ggplot(aes(x = PC1, y = PC2)) +  # pca.all$rotation  try PC3 vs. PC1, no gender effect
+  geom_point(aes(color = gender)) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  ggtitle("PCs reveal clusters") +
+  theme_bw() 
+```
+
+```{r eval=FALSE, include=FALSE}
+# base R 
+data.full$Gender <- as.factor(data.full$Gender)
+prop.table(table(data.full$Gender))  # almost 50/50 among gender
+plot(pca.all$x[, 1], pca.all$x[, 2], col=data.full$Gender,
+     xlim=c(-10, 10), ylim=c(-10, 10), pch = 16,
+     xlab="PC1", ylab="PC2")
+abline(v=0, h=0)
+legend("bottomright", legend=levels(data.full$Gender),
+       lty=c(1,1), lwd=c(2,2), col=data.full$Gender)
+```
+
+
+WOW! Males and females are clearly separated by PC2's! That implies females (red circles) are strong in intelligence and males are strong in dexterity! Does that agree with your intuition? 
+
+
+ggplot also has its version of biplot. Sorry need newer version of R to get `ggbiplot`. 
+```{r, ggbiplot, eval=FALSE}
+# ggbiplot(pca.all, obs.scale = 1, var.scale = 2, group = data.full$Gender) +  # need this package
+#   scale_color_discrete(name = '') + 
+#   labs(title = "PCA SVABS with Gender") +
+#   theme_bw() 
+```
+
+
+## PVE's
+
+How much variability do PC1 and PC2 explain?
+```{r}
+knitr::kable(summary(pca.all)$importance)
+plot(pca.all)
+```  
+
+PVE plot
+```{r}
+plot(summary(pca.all)$importance[2, ], pch=16,
+     ylab="PVE",
+     xlab="Number of PC's",
+     main="PVE scree plot of PCA with all 10 scores ")
+```
+
+We see that PC1 accounts for 61% of the total variation in the 10 scores following by PC2 with 14%. 
+With only two leading PC's we have capture about 75% of the variance. 
+
+The scree plot of CPVE's
+```{r}
+plot(summary(pca.all)$importance[3, ], pch=16,
+     ylab="Cumulative PVE",
+     xlab="Number of PC's",
+     main="Scree plot of Cumulative PVE ")
+```
+75% of the total variability are explained or captured by the two leading PC's. 
+
+To capture the main features of all the tests we could use two summary scores
+
+   + PC1: Total scores (weighted)
+   + PC2: Difference between intelligence(such as math/words?) and dexterity 
+
+# Recap
+
+Principle Component Analysis finds linear combinations of the variables that capture the most information contained in the full data. We may even find some striking relationships among variables through a few PC's. It is often useful to reveal group information or to identify clusters. All PC's are orthogonal which can be an advantage property when we use them as predictors. The drawback is that we may lose the interpretation based on the original variables. 
+
+
+
+ 
+# Appendix 1: PC definitions via maximizing the variance of linear combinations.
+
+In this section we write formal definition of PC's with four `AFQT` tests.
+
+## First Principal Component 
+
+Looking for a linear transformation $Z_1$ of X1=Word, X2=Parag, X3=Math, and X4=Arith to have the max variance.
+
+$$Z_1=\phi_{11}*X1 + \phi_{21}*X2 + \phi_{31}*X3 + \phi_{41}*X4$$ such that
+$$\max_{\phi_{11}^2+ \phi_{21}^2 +\phi_{31}^2+ \phi_{41}^2=1}Var(Z_1)$$
+
+   
+
+## Second Principal Component 
+
+Similarly,looking for another linear transformation $Z_2$ of X1=Word, X2=Parag, X3=Math, and X4=Arith to have the max variance and $Z_1$ is orthogonal to $Z_2$.
+
+$$Z_2=\phi_{12}*X1 + \phi_{22}*X2 + \phi_{32}*X3 + \phi_{42}*X4$$ such that
+$$\max_{\phi_{12}^2+ \phi_{22}^2 +\phi_{32}^2+ \phi_{42}^2=1}Var(Z_2)$$
+
+By definitions we know two sets of loadings are perpendicular: or  $(\phi_{11}, \phi_{21}, \phi_{31}, \phi_{41})$ and $(\phi_{12}, \phi_{22}, \phi_{32}, \phi_{42})$ are orthogonal..
+
+## More PC components
+
+We keep going to obtain Z3, and Z4.
+
+
+# Appendix 2: PCA and Eigen decomposition Correlation Matrix
+
+How to get all the loadings, PC's? There are elegant, simple mathematics behind it. 
+
+To find the PC loadings we want to maximize the variance of the linear combination of the variables. Let $X=(X_1,X_2, \ldots, X_p)$ be the design matrix. We simply list all values of first variable $X_1$ for all subjects, and with similar ways to list $X_2$... So notice that the design matrix is a $n \times p$ matrix. 
+
+It is easy to show that the PC loadings are nothing but eigenvectors/values of $corr(X_1,X_2,\ldots, X_p)=X'X/(n-1)$ (if centered and scaled) or $cov(X_1,X_2)$ (unscaled).
+
+Let us use `data.AFQT` which has 50 people and 4 variables `Word`,  `Parag`, `Math` and  `Arith`. 
+
+Eigenvectors of `cor(data.AFQT)` give us the loadings with ordered PC1, PC2,...
+Eigenvalues are the variances of PC1, PC2,... 
+```{r eig decomp of cor matric}
+PC.eig <- eigen(cor(data.AFQT))
+PC.eig$vectors   # Loadings
+EigenVectors <- as.data.frame(PC.eig$vectors)
+names(EigenVectors) <- c("Eigvec.1", "Eigvec.2", "Eigvec.3", "Eigvec.4")
+# create eigen vectors 
+PC.eig$values    # Variances of each PC's 
+```
+Let us check against prcomp() output:
+```{r}
+# We use prcomp() here
+PC <- prcomp(data.AFQT, scale=TRUE)
+PC  # should be exactly same as PC's from eigen decomposition (up to the sign)
+phi <- PC$rotation
+phi
+```
+
+```{r results='hide'}
+cbind(EigenVectors, PC$rotation) # Putting the first PC's together
+# one from eigen-values???the other from prcomp(). They should be exactly the same (to the sign) and 
+# they are the same.
+```
+Eigenvectors and PC rotations are the same up to a sign difference. Are you convinced that PC loadings are the same as eigenvectors of correlation matrix of variables? 
+
+
+# Appendix 3: PCA and SVD
+
+A matrix X can be decomposed by Singular Value Decomposition (SVD). PC's can be obtained through SVD. SVD is very useful in applications, e.g. matrix completion, recommendation systems. Assume that X is centered and scaled.
+
+Fact: any matrix X can be decomposed as follows:
+$$X_{n \times  p}=U_{n\times p} D_{p \times p} V^T_{n \times p}$$
+Here $U$ is column orthornormal and it is call left singular vector for each column. $V$ is right singular vector of orthonormal matrix. $D$ is a diagonal matrix with decreasing values $d_1 > d_2,...>d_p$ and it is call singular values accordingly. 
+
+## Properties of SVD
+
+1. Matrix rank 1 representation
+
+Rewrite the matrix SVD to a sum of rank 1 vectors
+
+$$X_{n \times  p}=d_1 u_1 v_1^T + d_2 u_2 v_2^T + \ldots d_p u_p v_p^T$$
+Here $u$'s are columns of $U$ and $v$'s are columns of $V$ with norm 1, i.e. $\|u_j\|_2 = 1$ for $j = 1, \ldots, p$. 
+
+2. Since $d's$ are decreasing, we may take top singular vectors to approximate the matrix $X$. 
+
+3. It is easy to see $V$ is the eigenvectors of $X^T X$ and $d_i^2$ are corresponding eigenvalues. So the right singular vectors $v_1, v_2...$ give us the loadings for PC's.
+
+Very easy to prove by plugging in $X = U D V^T$ and
+noticing that $U$, $V$ are orthonormal, i.e., $U^T U = I$ and $V^T V = I$. Immediately we get
+$$X^T X V = V D U^T U D V^T V = V D^2$$
+4. $X V = U D$ that means $\text{PC scores} = U D$.
+
+How beautiful!
+
+
+## Compare PCA and SVD 
+Let us verify this using function `svd()`. We use `data.AFQT` again.
+
+```{r SVD and PC}
+data.AFQT <- AFQT.sub %>% select(Word, Parag, Math, Arith)
+data.AFQT.center.scale <- scale(data.AFQT, scale = TRUE)
+
+pc.4 <- prcomp(data.AFQT.center.scale, scale = TRUE)
+AFQT.svd <- svd(data.AFQT.center.scale)
+names(AFQT.svd)
+```
+
+
+### PC loadings
+
+Right singular vectors $v$'s are PC loadings.
+```{r}
+AFQT.svd$v
+```
+
+Compare with PC loadings
+```{r}
+pc.4$rotation
+```
+
+
+### PC scores
+
+Let's take a look at PC1 first. $PC1 = d_1 u_1$
+```{r}
+d1.u1 <- AFQT.svd$d[1] * AFQT.svd$u[, 1]
+pc1 <- prcomp(data.AFQT.center.scale)$x[, 1]
+cbind(d1.u1, pc1)[1:5, ]
+```
+
+We compare PC scores computed by $UD$ and by `prcomp()`.
+
+```{r}
+(AFQT.svd$u %*% diag(AFQT.svd$d) - pc.4$x)[1:5,]
+```
+
+### Variance of PC scores
+
+Variance of PC scores are $d_i^2/(n-1)$.
+```{r}
+var.pc <- (pc.4$sdev)^2
+var.pc.svd <- AFQT.svd$d^2/(nrow(data.AFQT)-1)
+cbind(var.pc, var.pc.svd)
+```
+
+

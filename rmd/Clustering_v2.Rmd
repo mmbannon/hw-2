@@ -1,0 +1,763 @@
+---
+title: "Modern Data Mining"
+author: "Clustering Analysis"
+date: ''
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align="center", fig.width=8, fig.height=4, comment=NA, dev = 'png')
+if(!require('pacman')) {
+  install.packages('pacman')
+}
+pacman::p_load(tidyverse, cluster, factoextra, data.table, irlba, pheatmap)
+set.seed(0)
+```
+
+# Introduction
+
+## Outline {-}
+
+- Source: 
+  * Study this lecture 
+  * Read Chapter 10.3 
+
+- Case study: group subjects via large dimensional mRNA sequences!
+
+- Clustering Methods
+  *K-means
+  *Hierarchical clustering (Read 10.3.2)
+
+- K-means
+  * Group observations 
+  * Close within groups and far away between groups
+  * Usual distance in p-dimensional space
+  * What to do with the groups found?
+  
+- Spectrum Analysis
+  * PCA first (or SVD first)
+  * Clustering
+  
+- R-magic
+  * First experience with LARGE data
+  * fread(), fwrite(): power of data.table
+  * saveRDS/readRDS: save your results 
+  * heat map
+  * kmeans()
+  * prcomp()
+  * svd()  through irlba() 
+
+
+This is an exciting lecture where you see 
+
+- One may have significant discoveries when done right analyses. 
+- 
+
+
+## Cluster Analysis
+Clustering is the task of grouping together a set of objects in a way that objects in the same cluster are more similar to each other than to objects in other clusters. Similarity is an amount that reflects the strength of relationship between two data objects. Clustering is mainly used for exploratory data mining. It is used in many fields such as machine learning, pattern recognition, image analysis, information retrieval, bioinformatics, data compression, and computer graphics. 
+
+Given a set of features $X_1,X_2,\dots,X_p$ measured on $n$ observations, the goal is to discover interesting things about the measurements on $X_1, X_2,\dots,X_p$. Is there an informative way to visualize the data? Can we discover subgroups among the variables or among the observations?
+
+
+Among many methods, k-means and Hierarchical clustering are most commonly used. We will go in depth with k-means and leave Hierarchical clustering method for students to study. Section 10.3 in ISLR provides an excellent reference. 
+
+
+## Case 1: Major League Baseball Teams 
+
+Among 30 Major League Baseball teams, the payroll are very different. Can we group them based on the payroll history of 17 years from 1998 to 2014 to discover interesting similarities within the groups? Can we visualize this 17 dimension dataset? We mainly use this case to illustrate elements of the methods. 
+
+## Case 2: What does mRNA reveal? 
+
+[The Cancer Genome Atlas (TCGA)](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga), a landmark cancer genomics program by National Cancer Institute (NCI), molecularly characterized over 20,000 primary cancer and matched normal samples spanning 33 cancer types. The genome data is open to public from the [Genomic Data Commons Data Portal (GDC)](https://portal.gdc.cancer.gov/). In this study, we focus on two cancer types with most observations, breast cancer (BRCA) and brain cancer (GBM), and try to use mRNA expression data alone without the cancer labels to classify two types. Classification without labels or prediction without outcomes is called unsupervised learning. It is often the case that we do not observe labels, so we first try to cluster and perform classification using domain knowledge. In this lecture, we will focus on k-means. (probably hierarchical clustering as well)
+
+The biostats community is a very active branch in R community. [Bioconductor](https://www.bioconductor.org/) is the main platform for packages in analyzing genome data. The `TCGAbiolinks` package from Bioconductor provides interfaces to download data from GDC. Using `TCGAbiolinks`, we have downloaded gene expression data in `BRCA` and `GBM`. There are 1215 observations for BRCA and 174 for GBM with almost 20k genes. 
+
+mRNA sequencing (RNA-Seq) data reveals the gene expression level. It can be used to discover changes in gene expression and differences between groups (e.g. cancer type, treatment). RNA-Seq uses high throughput technology to estimate the gene expression level via "counting" mRNAs (reads). The expression level can be used as a proxy for protein abundance, that supports different life functions. 
+
+During estimation of gene expression using counts, lots of factors need to be considered, for example, sequencing depth/coverage, gene length, and variance for each gene's expression. We are not expert in sequencing data, but there are lots of research devoted into each of these caveats. Commonly used packages include DESeq, edgeR, and voom+limma. We use RNA-Seq to demonstrate clustering.
+
+**Goal of the study:** Can we group people based on their mRNA which may yield some striking similarity within groups?  We may hopefully visualize this very high dimensional dataset (p is approximately 20,000!)
+
+
+
+# K-Means Clustering
+
+K-means clustering is the most commonly used unsupervised machine learning algorithm for partitioning a given data set into a set of k groups (i.e. k clusters), where k represents the number of groups pre-specified by the analyst. It classifies objects in multiple groups (i.e., clusters), such that objects within the same cluster are as similar as possible (i.e., high intra-class similarity), whereas objects from different clusters are as dissimilar as possible (i.e., low inter-class similarity). In k-means clustering, each cluster is represented by its center (i.e, centroid) which corresponds to the mean of points assigned to the cluster.
+
+
+The basic idea behind k-means clustering consists of defining clusters so that the total intra-cluster variation (known as total within-cluster variation) is minimized. There are several k-means algorithms available. The standard algorithm is the Hartigan-Wong algorithm (1979). For each cluster, first define the within-cluster sum of squares as the sum of squared Euclidean distances between items and the corresponding centroid. 
+
+$$W(C_k) = \displaystyle\sum_{x_i \in C_k} (x_i - \mu_k)^2$$
+
+where:
+
+* $x_i$ is a data point belonging to the cluster $C_k$
+* $\mu_k$ is the mean value of the points assigned to the cluster $C_k$
+
+Each observation ($x_i$) is assigned to a given cluster such that the sum of squares (SS) distance of the observation to their assigned cluster centers ($\mu_k$) is minimized. We define the total within-cluster variation as follows:
+$$\text{tot.withiness} = \displaystyle\sum_{k=1}^K = W(C_k) = \displaystyle\sum_{k=1}^K \displaystyle\sum_{x_i \in C_k} (x_i - \mu_k)^2$$
+The total within-cluster sum of square measures the compactness (i.e goodness) of the clustering and we want it to be as small as possible. The goal is to find the $K$ centers which minimize the `tot.withinss`. This is a very hard minimization problem. The Hartigan-Wong algorithm provides one way to get a solution. There is no guarantee that the solution is the global minimum. 
+
+**Fact: the minimize of the `tot.withinss` is the sample mean within each group given clusters.**
+
+## K-means Algorithm
+
+The first step when using k-means clustering is to indicate the number of clusters (k) that will be generated in the final solution. The algorithm starts by randomly selecting k `objects` from the data set to serve as the initial centers for the clusters. The selected objects are also known as cluster means or centroids. Next, each of the remaining objects is assigned to it's closest centroid, where closest is defined using the Euclidean distance between the object and the cluster mean. This step is called "cluster assignment step". After the assignment step, the algorithm computes the new **mean value** of each cluster. The term cluster "centroid update" is used to design this step. Now that the centers have been recalculated, every observation is checked again to see if it might be closer to a different cluster. All the objects are reassigned again using the updated cluster means. The cluster assignment and centroid update steps are iteratively repeated until the cluster assignments stop changing (i.e until convergence is achieved). That is, the clusters formed in the current iteration are the same as those obtained in the previous iteration.
+
+K-means algorithm can be summarized as follows:
+
+1. Specify the number of clusters ($K$) to be created (by the analyst)
+
+2. Select randomly $k$ objects from the data set as the initial cluster centers or means
+
+3. Assigns each observation to their closest centroid, based on the Euclidean distance between the object and the centroid
+
+4. For each of the $k$ clusters update the cluster centroid by calculating the new mean values of all the data points in the cluster. The centroid of a $K$th cluster is a vector of length $p$ containing the means of all variables for the observations in the $k$th cluster; $p$ is the number of variables.
+
+5. Iterate steps 3 and 4 until the cluster assignments stop changing or the maximum number of iterations is reached. By default, the R software uses 10 as the default value for the maximum number of iterations.
+
+**Remark:** Because of random chosen initial centers,  the final clusters can be different!
+
+Now that you have seen the theory, let's implement the algorithm and see the results!
+
+## K-means Implementation
+
+We will use the `kmeans()` function in R. $k$ specifies the number of clusters. Also, there is a `nstart` option that attempts multiple initial configurations and reports on the best one within the kmeans function. Seeds allow you to create a starting point for randomly generated numbers, so that each time your code is run, the same answer is generated.
+
+
+## Comments
+K-means clustering is a very simple and fast algorithm. Furthermore, it can efficiently deal with very large data sets. However, there are some weaknesses of the k-means approach The biggest disadvantage is that it requires us to pre-specify the number of clusters ($k$).  An additional disadvantage of k-means is that it is sensitive to outliers and different results can occur if you change the ordering of the data. Lastly we also need to decide should we scale the data. We will provide some metrics to choose optimal cluster number. 
+
+# Case 1: ML Baseball Teams
+
+We first run ML baseball data to see how teams are grouped based on the payroll and can we make some sense out of the clusters formed. 
+
+**Data preparation:**
+
+Payroll information is stored in `baseball.csv` with `team`, `payroll` in millions, `year` and winning information for each year. 
+
+```{r skim baseball}
+baseball <- read.csv("baseball.csv", stringsAsFactors = F)
+names(baseball)
+dim(baseball)
+```
+The data is stored in a `long` form. Since we need to work on 17 features of payroll each year, we need to change the data into a `wide` format.
+
+```{r wide baseball}
+payroll <- baseball %>%
+  pivot_wider(id_cols = team, 
+              names_from = year,
+              names_prefix = "p",
+              values_from = payroll)
+names(payroll)
+dim(payroll)
+```
+
+In this data we have $n=30$,number of the observations and $p=17$, dimension of the data. 
+
+
+## K-means clustering
+
+We use `kmeans()` with a pre-determined k, number of clusters that we are hoping to group the 30 teams.  Take $k=2$.
+
+```{r payroll.kmeans}
+payroll.kmeans <- payroll %>% 
+    select(-team) %>%    # only operate on payrolls
+    kmeans(centers = 2 )  # centers: number of cluster
+str(payroll.kmeans)   
+```
+
+The above list is an output of the `kmeans()` function. Let's see some of the important ones closely:
+
+* `cluster`: a vector of integers (from 1:k) indicating the cluster to which each point (team) is allocated.
+
+* `centers`: a matrix of k cluster centers (2 centers, each with 17 dimension)
+
+* `withinss`: vector of within-cluster sum of squares, one component per cluster.
+
+* `tot.withinss`: total within-cluster sum of squares. That is, `sum(withinss)`. It measures tightness within groups
+
+* `betweenss`: total of sum of squares of cluster centers, each center is weighted by the size. It measures how far between groups
+
+* `size`: the number of points in each cluster.
+
+```{r payroll.kmeans.output}
+payroll.kmeans$cluster # one label for each team, k=2 many centers
+payroll.kmeans$size # size of each cluster
+```
+
+**Cluster groups:**
+
+Which teams are in the same clusters? Does the clusters make any sense to you? What are similar for team within each group? 
+
+```{r}
+payroll %>% select (team) %>%
+        mutate(group = payroll.kmeans$cluster) %>%
+        arrange(group)
+```
+
+## Visualize the groups
+
+Visualization is powerful to reveal the group similarity if done right. We may impose the clustering labels over some plots. It is challenging to decide which plot to use? We impose the grouping labels over the scatter plot of payroll in 1998 and 2014. (Why did we pick these two variables? No particular reason.) Seems that one group members are all highly paid in 2014. 
+```{r payroll.kmeans.plot}
+data.frame(team = payroll$team,
+          p2014 = payroll$p2014, 
+          p1998 = payroll$p1998,
+          group = as.factor(payroll.kmeans$cluster)) %>%
+  ggplot(aes(x = p1998, y = p2014, col = group)) +
+  geom_point() +
+  ggrepel::geom_text_repel(aes(label = team))+
+  ggtitle("Clustering over two variables")
+  
+```
+
+Now, Principle Components may help! We next try to impose the cluster labels over the `PC2` vs. `PC1` plot.
+
+Get PC's first:
+```{r payroll.kmeans.plot.pca}
+payroll.pca <- prcomp(payroll %>% select(-team), scale. = F) # no scaling
+payroll.pca$rotation[, 1:2]
+```
+Notice: PC1 capture the weighted total of payrolls over the years while PC2 is the difference between the weighted total before 2010 and after. 
+
+Now label the clusters over the PC's, we see a clear separation among the two clusters. `K-means` separates groups by PC1, weighted total payrolls. It seems that one group has all those well paid teams!!!!
+```{r}
+  data.frame(team = payroll$team,
+          pc1 = payroll.pca$x[, 1], 
+          pc2 = payroll.pca$x[, 2],
+          group = as.factor(payroll.kmeans$cluster)) %>%
+  ggplot(aes(x = pc1, y = pc2, col = group)) +
+  geom_point() +
+  ggrepel::geom_text_repel(aes(label = team))+
+  ggtitle("Clustering over PC1 and PC2")
+```
+
+## Spectrum Clustering
+
+PCs and clustering analysis often go together. We may cluster objects with only a few leading PC's. It is much more computational efficient. Because of PC's property we may have better clustering results. 
+
+```{r pca.clustering}
+payroll.pca <- prcomp(payroll %>% select(-team), scale. = F) # no scaling
+payroll.pca.kmeans <- kmeans(payroll.pca$x[, 1:2], centers = 2)
+```
+
+We now put two clustering results, one with original payrolls, the other with PC's 
+
+```{r}
+data.frame(team = payroll$team,
+           PC1 = payroll.pca$x[, 1],
+           PC2 = payroll.pca$x[, 2],
+           group = as.factor(payroll.kmeans$cluster),
+           group_pca = as.factor(payroll.pca.kmeans$cluster)) %>%
+  ggplot(aes(x = PC1, y = PC2, col = group, shape = group_pca)) +
+  geom_point() +
+  ggrepel::geom_text_repel(aes(label = team))
+```
+Notice the two clusters differ by a couple of teams. Change number of PCs used doesn't seem to change the grouping. 
+
+We should also check various sum of squares to see the quality of the clusters. 
+
+
+
+**More about kmeans():**
+
+As we have explained, the final results of `kmeans` depends on the initial centers given. Often we may end up with a local optimal results. 
+
+- The result will somewhat random depending on initial values
+- We may set.seed() to control the initial values to reproduce the same clustering results.
+- We also suggest to run the algorithms a few times with different initial values and get the one with minimal within sum of squares. 
+
+This can be tested with one argument `nstart` within `kmeans()`. 
+```{r}
+payroll.kmeans.nstart <-
+  payroll %>% select(-team) %>%    
+  kmeans(centers = 2, nstart = 2) 
+  # nstart =1 by default, number of rounds with diff initial values
+  payroll.kmeans$withinss 
+  # check sizes or disagreement over groupings
+  
+```
+
+
+## Determining Optimal number of Clusters
+
+As you may recall the analyst specifies the number of clusters to use; preferably the analyst would like to use the optimal number of clusters. To aid the analyst, the following explains the two most popular methods for determining the optimal clusters, which includes:
+
+1. Elbow method
+
+2. Silhouette method
+
+
+### Elbow method
+
+Recall that, the basic idea behind cluster partitioning methods, such as k-means clustering, is to define clusters such that the total intra-cluster variation (known as total within-cluster variation or total within-cluster sum of square) is minimized:
+$$
+\min(\sum_{k=1}^K W(C_k))
+$$
+where $C_k$ is the $k$th cluster and $W(C_k)$ is the within-cluster variation. The total within-cluster sum of square (wss) measures the compactness of the clustering and we want it to be as small as possible. Thus, we can use the following algorithm to define the optimal clusters:
+
+1. Compute clustering algorithm (e.g., k-means clustering) for different values of $k$. For instance, by varying $k$ from 1 to 10 clusters
+
+2. For each $k$, calculate the total within-cluster sum of square (wss)
+
+3. Plot the curve of wss according to the number of clusters $k$.
+
+4. The location of a bend (knee) in the plot is generally considered as an indicator of the appropriate number of clusters.
+
+
+The following R-chunk output the scree plot of `tot.withinss` with different number of k (number of clusters). You may repeat this chunk a few times and observe the changes in the plot. If you set.seed() then the curve will not change, why not??
+
+What would you expect tot.withinss to be when k=30, the number of observation?
+```{r}
+set.seed(0)
+
+# function to compute total within-cluster sum of square 
+wss <- function(df, k) {
+  kmeans(df, k, nstart = 10)$tot.withinss
+}
+
+# Compute and plot wss for k = 1 to k = 15
+k.values <- 2:15
+
+# extract wss for 2-15 clusters using sapply 
+wss_values <- sapply(k.values, 
+                     function(k) kmeans(payroll[,-1], centers = k)$tot.withinss)
+
+# or use map_dbl()
+#wss_values <- map_dbl(k.values, function(k) wss(payroll[,-1], k))  
+plot(k.values, wss_values,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters K",
+       ylab="Total within-clusters sum of squares")
+```
+
+
+Fortunately, this process to compute the “Elbow method” has been wrapped up in a single function - `fviz_nbclust()` which is in the `factoextra` package.
+
+```{r}
+#set.seed(0)
+fviz_nbclust(payroll[,-1], kmeans, method = "wss")
+```
+
+
+
+
+# Case 2: What does mRNA reveal?
+
+Can we group people using large dimension of mRNA sequences? If so we can then dig deeper to see what similarities are there within each group. It may guide researchers to conduct further studies. 
+
+The data is stored in `tcga`. It contains $n= 1389$ subjects (people), and $p=19947$ mRNA's for each person. In this data set we also have labels `type`, which indicates type of cancers each one has. 1 indicates a BRCA cancer and 0 GBM cancer. **We do not use the labels when performing clustering analysis.** The labels are only used to verify the quality of the clustering groups. 
+
+This is first real **LARGE** or **WIDE** data we have encountered so far. You will see the usual excel style of viewing or handing data no longer feasible. Everything needs to be done with R!
+
+## EDA of `tcga` data
+
+**Exploring the data:**
+
+Let us read the data into R first
+```{r tcga}
+tcga <- fread("tcga.csv")   
+# now we see the advantage of data.table. fread() is much faster
+dim(tcga)  
+names(tcga)[1:20]  # see a few variable names
+summary(tcga[, 1:3])  # only to peek the first 3 variables
+tcga$type <- as.factor(tcga$type)  #table(tcga$type)
+sum(is.na(tcga))   # quick way to check missing values. use with caution!
+
+```
+
+A quick checks: 
+
+- there are `r dim(tcga)[1]` people and `r dim(tcga)[3]` variables. `type` being the first variable.
+- there does not seem to have any missing values.
+
+The number of cancer types are
+```{r}
+table(tcga$type)
+```
+Remember: we DO NOT use this variable to carry out clustering analysis!!!!
+
+**Questions: what would you do to get acquainted with this beautiful big dataset???**
+
+### Transformation
+
+The mRNA sequences tends to be very skewed. We may transform the sequence to log scale. 
+
+Take 10 mRNA sequences to see their distributions. 
+```{r exam mRNA}
+tcga_type <- tcga$type
+tcga <- tcga[,-1]
+
+num_gene <- ncol(tcga)
+
+# randomly select 10 gene
+set.seed(10)
+sample_idx <- sample(num_gene, 10)  
+
+# plot count number histogram for each gene
+tcga %>% 
+  select(all_of(sample_idx)) %>%      # select column by index
+  pivot_longer(cols = everything()) %>%     # for facet(0)
+  ggplot(aes(x = value, y = ..density..)) +
+  geom_histogram(aes(fill = name)) +
+  facet_wrap(~name, scales = "free") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+We next transform all mRNA sequences to log scale. We first  remove mRNA if the entire columns are 0. Then apply $log(x + 1e-10)$ to each cell to avoid values which are very close to 0.  
+
+```{r}
+# remove genes with 0 counts
+sel_cols <- which(colSums(abs(tcga)) != 0)
+tcga_sub <- tcga[, sel_cols, with=F]
+dim(tcga_sub)
+
+# log
+tcga_sub <- log2(as.matrix(tcga_sub+1e-10))
+```
+
+## Heatmap
+
+Can we possibly spot some patterns among the mRNA sequences? Heat map is used here to see 100 randomly selected mRNA sequence for each person. We really can't spot anything. 
+
+```{r}
+# get index of randomly selected 100 genes
+#set.seed(1)
+sample_idx <- sample(ncol(tcga_sub), 100)
+# number of patients from each group
+n_cancer <- 50
+gbm_sample_idx <- sample(which(tcga_type == "GBM"), n_cancer)
+brca_sample_idx <- sample(which(tcga_type == "BRCA"), n_cancer)
+
+# randomly select 50 patients from each cancer type
+tcga_sub_n_cancer <- tcga_sub[c(gbm_sample_idx, brca_sample_idx), sample_idx]
+
+# add rownames to the subset
+rownames(tcga_sub_n_cancer) <- 1:nrow(tcga_sub_n_cancer)
+# create an annotation data.frame for cancer type
+annotation_row <- data.frame(Cancer = factor(rep(c("GBM", "BRCA"), c(n_cancer, n_cancer)), ordered = TRUE))
+# plot using pheatmap
+pheatmap(tcga_sub_n_cancer,
+         annotation_row = annotation_row,
+         cluster_rows = F, cluster_cols = F)
+
+# heatmap(tcga_sub_n_cancer, Rowv = NA, Colv = NA)
+```
+
+## K-means
+
+Let us first perform k-means on all the mRNA sequences. 
+
+```{r eval=F}
+# system.time() get how long it runs
+# it can take several minutes. 
+system.time({tcga_sub_kmeans <- kmeans(x = tcga_sub, 2)})  # I have a powerful laptop, only a few seconds
+
+# save the results as RDS
+saveRDS(tcga_sub_kmeans, "output/tcga_kmeans.RDS")
+```
+
+We save the above kmeans result and will not evaluate the analysis again for the downstream analysis. 
+```{r}
+# read in tcga_sub_kmeans
+tcga_sub_kmeans <- readRDS("output/tcga_kmeans.RDS")
+
+# discrepancy table
+table(tcga_type, tcga_sub_kmeans$cluster)
+```
+
+## Spectrum Analysis
+
+Once again, clustering on PC's might help to get good clusters. We now first get a few leading PC's. We then cluster on those chose PC's. **Warning: the following chunk may crash your toy laptop!**
+
+```{r eval = F}
+# Again PCA on such high dimensions can be slow 
+# We will show how to use use approximate SVD to solve this fast
+pca_ret <- prcomp(tcga_sub, center = T, scale. = T)
+
+# save the result
+# only save a few leading PCs
+pca_ret$rotation <- pca_ret$rotation[, 1:20]   
+pca_ret$x <- pca_ret$x[, 1:20]
+saveRDS(pca_ret, "output/tcga_pca.RDS")
+```
+Q1: for PC1, how many loadings are there?
+
+Q2: how many scores does PC1 have?
+
+
+
+
+Let's first take a look at the PVE. With elbow rule, we select 3 PCs.
+```{r}
+# read PCA
+pca_ret <- readRDS("output/tcga_pca.RDS")
+
+# Plot scree plot of PVE
+pve <- summary(pca_ret)$importance[2, 1:10]
+plot(pve, type="b", pch = 19, frame = FALSE)
+```
+We apply kmeans with number of clusters $k=2$. We compare the real cancer types with the clustering by kmeans. Color indicates the true cancer type, while the shape indicates the cluster from kmeans. **The kmeans clustering using 3PCs separates the two cancer types pretty well!** Exciting!!!!
+
+```{r}
+kmean_ret <- kmeans(x = pca_ret$x[, 1:3], 2)
+
+# color indicates the true cancer type
+# shape indicates the cluster results 
+p <- data.table(x = pca_ret$x[,1], 
+                y = pca_ret$x[,2],
+                col = as.factor(tcga_type),
+                cl = as.factor(kmean_ret$cluster)) %>%
+  ggplot() + 
+  geom_point(aes(x = x, y = y, col = col, shape = cl)) +
+  scale_color_manual(labels = c("Breast cancer", "Brain cancer"),
+                     values = scales::hue_pal()(2)) +
+  scale_shape_manual(labels = c("Clulster 1", "Cluster 2"),
+                     values = c(4, 16)) + 
+  theme_bw() +
+  labs(color = "Cancer type", shape = "Cluster") +
+  xlab("PC1") +
+  ylab("PC2")
+p
+```
+Caveats:
+
+1. The clustering effects can be due to variations due to experiment. As mentioned, there are many tuning parameters for the measurement, so PCA might first pick up the experiment variation.
+
+### Optimal number of k's
+
+Show the scree plot of some measurement.
+
+```{r}
+k.values <- 1:10
+
+# extract wss for 1:10 clusters
+wss_values <- map_dbl(k.values, function(k) wss(pca_ret$x[, 1:3], k))
+plot(k.values, wss_values,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters K",
+       ylab="Total within-clusters sum of squares")
+```
+
+Let's compare the clustering results with 3 PCs and using the whole data set.
+They pretty much agree, which means we only need 3 PCs instead of `r num_gene` 
+for clustering 2 cancer types in this case.
+```{r}
+p <- data.frame(x = pca_ret$x[,1], 
+                y = pca_ret$x[,2],
+                col = as.factor(tcga_sub_kmeans$cluster),
+                cl = as.factor(kmean_ret$cluster)) %>%
+  ggplot() + 
+  geom_point(aes(x = x, y = y, col = col, shape = cl)) +
+  scale_color_manual(labels = c("Cluster 1 (full)", "Cluster 2 (full)"),
+                     values = scales::hue_pal()(2)) +
+  scale_shape_manual(labels = c("PC cluster 1", "PC cluster 2"),
+                     values = c(4, 16)) + 
+  theme_bw() +
+  labs(color = "Cancer type", shape = "Cluster") +
+  xlab("PC1") +
+  ylab("PC2")
+p
+```
+
+###  Top loading genes
+
+Plot top loading genes from PC1 and PC2. 
+
+```{r}
+## plot top 20 loadings
+top_k <- 20
+
+## get pc1 and pc2
+pc1 <- data.frame(loading = pca_ret$rotation[,1],
+                  gene = rownames(pca_ret$rotation),
+                  pc = "PC1")
+pc2 <- data.frame(loading = pca_ret$rotation[,2],
+                  gene = rownames(pca_ret$rotation),
+                  pc = "PC2")
+
+# get top_k of pc1 and pc2
+pc1_top <- pc1 %>% arrange(-loading) %>% slice(1:top_k)
+pc2_top <- pc2 %>% arrange(-loading) %>% slice(1:top_k)
+
+rbind(pc1_top, pc2_top) %>%
+  ggplot(aes(x = reorder(gene, -loading), y = loading)) +
+  geom_point() +
+  ggtitle("Top loadings") +
+  xlab("Gene") +
+  facet_wrap(~pc, nrow = 1, scales = "free_x") +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = -45, hjust = 0, vjust = 1))
+```
+
+Now we plot the heatmap of top loading genes. These top genes indeed systematically capture the difference between two types of cancer. **Look what happened??? Are you exciting to see this beautiful PLOT!**
+
+```{r}
+# number of patients from each group
+n_cancer <- 50
+gbm_sample_idx <- sample(which(tcga_type == "GBM"), n_cancer)
+brca_sample_idx <- sample(which(tcga_type == "BRCA"), n_cancer)
+
+# randomly select 50 patients from each cancer type
+# and select the top genes in PC1 and PC2
+tcga_sub_top_k <- as.data.frame(tcga_sub[c(gbm_sample_idx, brca_sample_idx),]) %>%
+  select(pc1_top$gene, pc2_top$gene)
+tcga_sub_top_k <- scale(tcga_sub_top_k)
+
+# add rownames to the subset
+rownames(tcga_sub_top_k) <- 1:nrow(tcga_sub_top_k)
+# an annotation data.frame for cancer type
+annotation_row <- data.frame(Cancer = factor(rep(c("GBM", "TCGA"), c(n_cancer, n_cancer)), ordered = TRUE))
+# an annotation data.frame for PC1 and PC2
+annotation_col <- data.frame(PC = factor(rep(c("PC1", "PC2"), c(top_k, top_k)), ordered = TRUE))
+rownames(annotation_col) <- colnames(tcga_sub_top_k)
+# plot using pheatmap
+pheatmap(tcga_sub_top_k,
+         annotation_row = annotation_row,
+         annotation_col = annotation_col,
+         cluster_rows = F, cluster_cols = F, show_rownames = F)
+
+# heatmap(tcga_sub_n_cancer, Rowv = NA, Colv = NA)
+```
+Now what if we take the smallest loadings in terms of absolute value? 
+We can't really differentiate between two groups.
+
+```{r}
+btm_k <- 20
+# get smallest of pc1 and pc2 in terms of absolute value
+pc1_btm <- pc1 %>% arrange(abs(loading)) %>% slice(1:btm_k)
+pc2_btm <- pc2 %>% arrange(abs(loading)) %>% slice(1:btm_k)
+
+# randomly select 50 patients from each cancer type
+# and select the bottom genes in PC1 and PC2
+tcga_sub_btm_k <- as.data.frame(tcga_sub[c(gbm_sample_idx, brca_sample_idx),]) %>%
+  select(pc1_btm$gene, pc2_btm$gene)
+tcga_sub_btm_k <- scale(tcga_sub_btm_k)
+
+# add rownames to the subset
+rownames(tcga_sub_btm_k) <- 1:nrow(tcga_sub_btm_k)
+# create an annotation data.frame for cancer type
+annotation_row <- data.frame(Cancer = factor(rep(c("GBM", "TCGA"), c(n_cancer, n_cancer)), ordered = TRUE))
+annotation_col <- data.frame(PC = factor(rep(c("PC1", "PC2"), c(btm_k, btm_k)), ordered = TRUE))
+rownames(annotation_col) <- colnames(tcga_sub_btm_k)
+# plot using pheatmap
+pheatmap(tcga_sub_btm_k,
+         annotation_row = annotation_row,
+         annotation_col = annotation_col,
+         cluster_rows = F, cluster_cols = F, show_rownames = F)
+```
+**Question**:
+
+1. What if we do not scale when PCA?
+
+
+### SVD with `irlba()`
+
+Since we only need leading PCs, we only need to calculate the leading PCs.
+We use `irlba()` to approximate the leading few singular values with their
+corresponding singular vectors. **Watch how fast the spectrum analysis can be done, instantly!!!!**
+
+```{r eval = F}
+# center and scale the data
+tcga_sub_scaled_centered <- scale(as.matrix(tcga_sub), center = T, scale = T)
+# only calculate first few components using SVD by irlba()
+## nv = 10: only calculate leading 10
+svd_ret <- irlba::irlba(tcga_sub_scaled_centered, nv = 10)
+
+# Approximate the PVE
+svd_var <- svd_ret$d^2/(nrow(tcga_sub_scaled_centered)-1)
+pve_apx <- svd_var/num_gene
+plot(pve_apx, type="b", pch = 19, frame = FALSE)
+
+# get pc score
+pc_score <- tcga_sub_scaled_centered %*% svd_ret$v[, 1:3]
+
+# apply kmean
+kmean_ret <- kmeans(x = pc_score, 2)
+
+p <- data.table(x = pc_score[,1], 
+                y = pc_score[,2],
+                col = as.factor(tcga_type),
+                cl = as.factor(kmean_ret$cluster)) %>%
+  ggplot() + 
+  geom_point(aes(x = x, y = y, col = col, shape = cl)) +
+  scale_color_manual(labels = c("Breast cancer", "Brain cancer"),
+                     values = scales::hue_pal()(2)) +
+  scale_shape_manual(labels = c("Clulster 1", "Cluster 2"),
+                     values = c(4, 16)) + 
+  theme_bw() +
+  labs(color = "Cancer type", shape = "Cluster") +
+  xlab("PC1") +
+  ylab("PC2")
+p
+```
+
+# Appendix 1: Silhouette Method
+
+Keep this section as a reference for now. 
+
+**Silhouette coefficient** is a measure of how similar an object is to its own cluster (cohesion) compared to other clusters (separation).
+
+$$s = \frac{b - a}{max(a,b)}$$
+
+- s is the silhouette coefficient of the data point
+- a is the average distance between and all the other data points in the cluster to which the data point belongs
+- b is the minimum average distance from the data point to all clusters to which the data point does not belong
+- The value of the silhouette coefficient is between [-1, 1]. 
+  * The higher means the point is better fit to the cluster group.
+  * 0 means overlapping between clusters.
+
+```{r silouette, fig.show="hold", fig.height=10}
+dis <- dist(payroll[,-1])^2
+par(mfrow=c(2,2))
+for(k in 2:5) {
+  payroll.pca.kmeans <- kmeans(payroll.pca$x, centers = k)
+  sil <- cluster::silhouette(payroll.pca.kmeans$cluster, dis)
+  plot(sil, col = scales::hue_pal()(k), border=NA)
+}
+```
+
+
+To determine the optimal number of clusters, we can use the average silhouette. To be specific, for each $k$, we take the average of the silhouette coefficients. The average silhouette then measures the quality of a clustering. That is, it determines how well each object lies within its cluster. A high average silhouette width indicates a good clustering. The average silhouette method computes the average silhouette of observations for different values of k. The optimal number of clusters $k$ is the one that maximizes the average silhouette over a range of possible values for $k$ (Kaufman and Rousseeuw, 1990).
+
+```{r}
+set.seed(0)
+
+# function to compute average silhouette for k clusters
+avg_sil <- function(k) {
+  km.res <- kmeans(payroll[,-1], centers = k, nstart = 25)
+  ss <- silhouette(km.res$cluster, dist(payroll[,-1]))
+  mean(ss[, 3])
+}
+
+# Compute and plot wss for k = 2 to k = 15
+k.values <- 2:10
+
+# extract avg silhouette for 2-15 clusters
+avg_sil_values <- map_dbl(k.values, avg_sil)
+
+plot(k.values, avg_sil_values,
+       type = "b", pch = 19, frame = FALSE, 
+       xlab = "Number of clusters K",
+       ylab = "Average Silhouettes")
+```
+
+Similar to the elbow method, this process to compute the “average silhouette method” has been wrapped up in a single function `fviz_nbclust(..., method = "silhouette")`. Also, we can use the `silhouette()` function in the `cluster` package to compute the average silhouette width.
+
+```{r}
+set.seed(0)
+fviz_nbclust(payroll[,-1], kmeans, method = "silhouette")
+```
+
