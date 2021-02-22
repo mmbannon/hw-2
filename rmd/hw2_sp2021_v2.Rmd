@@ -2,7 +2,7 @@
 title: "STAT 571/701 Modern Data Mining, HW 2"
 author:
 - Maddie Bannon  ## TEST TEST TEST TEST TEST TEST ###
-- Chris Coelho
+- Chris Coelho ## Did we make it work!? Made some changes here ###
 - Charles Lachapelle 
 date: 'Due: 11:59 PM,  Sunday, 02/28'
 output:
@@ -45,6 +45,7 @@ Clustering Analysis is another form of EDA. Here we are hoping to group data poi
 Both PCA and Clustering Analysis are so called unsupervised learning. There is no response variables involved in the process. 
 
 For supervised learning, we try to find out how does a set of predictors relate to some response variable of the interest. Multiple regression is still by far, one of the most popular methods. We use linear models as a working model for its simplicity and interpretability. It is important that we use domain knowledge as much as we can to determine the form of the response as well as the function format of the factors.
+
 
 
 ## Objectives
