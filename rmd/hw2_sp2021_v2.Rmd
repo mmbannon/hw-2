@@ -30,7 +30,7 @@ knitr::opts_chunk$set(echo = FALSE, fig.width=8, fig.height=4)
 options(scipen = 0, digits = 3)  # controls base R output
 # check if you have ISLR package, if not, install it
 if(!require('pacman')) {install.packages('pacman')}
-pacman::p_load(ISLR, tidyverse, data.table, skimr, ggplot2) # add the packages needed
+pacman::p_load(ISLR, tidyverse, data.table, skimr, ggplot2, dplyr) # add the packages needed
 ```
 
 
@@ -129,9 +129,15 @@ The following 10 questions are answered as 1: strongly agree, 2: agree, 3: disag
 
 Load the data. Do a quick EDA to get familiar with the data set. Pay attention to the unit of each variable. Are there any missing values?
 
+@Chris @Charles
+Observations: (1) negative income (2) Blank values for Job description 
+TBC: have not finished, but got bored
 
 
 ```{r}
+getwd()
+setwd("C:/Users/38MMB/Documents/hw-2")
+
 SE_data <- read.csv("data/NLSY79.csv")
 ```
 
@@ -139,12 +145,30 @@ SE_data <- read.csv("data/NLSY79.csv")
 ```{r}
 #identifying missing variables 
 skim(SE_data)
-glimpse(SE_data)
-summary(SE_data)
 
+#identifying missing values
 SE_data %>%
-  summarise(na = sum(is.na.data.frame(SE_data)))
+  group_by(Job05) %>%
+  tally()
 
+ls(SE_data)
+
+#create gender plot
+gender_count_plot <- ggplot(SE_data) + 
+  geom_bar(aes(x=Gender, group = Gender, fill= Gender))+ 
+  labs( title = "Count by Gender", x="Gender", y="count")+ 
+  theme_classic()
+
+ln_Income05 <- log(SE_data$Income05)
+
+
+income_count_plot <- ggplot(SE_data) + 
+  geom_histogram(aes(x=ln_Income05, group = ln_Income05, fill= ln_Income05))+ 
+  labs( title = "Count by Income", x="Income", y="count")+ 
+  theme_classic()
+
+gender_count_plot
+income_count_plot
 
 ```
 
@@ -156,9 +180,32 @@ Let concentrate on Esteem scores evaluated in 87.
 
 1. Reverse Esteem 1, 2, 4, 6, and 7 so that a higher score corresponds to higher self-esteem. (Hint: if we store the esteem data in `data.esteem`, then `data.esteem[,  c(1, 2, 4, 6, 7)]  <- 5 - data.esteem[,  c(1, 2, 4, 6, 7)]` to reverse the score.)
 
+```{r}
+# to understand column index
+data.frame(colnames(SE_data)) 
+head(SE_data, 5)
+
+#reversing scores 
+data.esteem.87 <- SE_data[c(37:46)]
+data.esteem.87[,  c(1, 2, 4, 6, 7)]  <- 5 - data.esteem.87[,  c(1, 2, 4, 6, 7)]
+
+#confirming results
+head(data.esteem.87, 5)
+```
+
 2. Write a brief summary with necessary plots about the 10 esteem measurements.
+```{r}
+
+
+
+
+```
 
 3. Do esteem scores all positively correlated? Report the pairwise correlation table and write a brief summary.
+```{r}
+data.esteem.87.corr <- cor(data.esteem.87)
+data.esteem.87.corr
+```
 
 4. PCA on 10 esteem measurements. (centered but no scaling)
 
