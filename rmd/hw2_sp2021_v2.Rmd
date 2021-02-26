@@ -137,7 +137,6 @@ TBC: have not finished, but got bored
 ```{r}
 getwd()
 setwd("C:/Users/38MMB/Documents/hw-2")
-
 SE_data <- read.csv("data/NLSY79.csv")
 ```
 
@@ -145,6 +144,7 @@ SE_data <- read.csv("data/NLSY79.csv")
 ```{r}
 #identifying missing variables 
 skim(SE_data)
+str(SE_data)
 
 #identifying missing values
 SE_data %>%
@@ -153,22 +153,13 @@ SE_data %>%
 
 ls(SE_data)
 
-#create gender plot
-gender_count_plot <- ggplot(SE_data) + 
-  geom_bar(aes(x=Gender, group = Gender, fill= Gender))+ 
-  labs( title = "Count by Gender", x="Gender", y="count")+ 
-  theme_classic()
+#address negative values in income 
 
-ln_Income05 <- log(SE_data$Income05)
+SE_data$Income05[SE_data$Income05 < 0] <- mean(SE_data$Income05)
+SE_data$Income87[SE_data$Income87 < 0] <- mean(SE_data$Income87)
 
-
-income_count_plot <- ggplot(SE_data) + 
-  geom_histogram(aes(x=ln_Income05, group = ln_Income05, fill= ln_Income05))+ 
-  labs( title = "Count by Income", x="Income", y="count")+ 
-  theme_classic()
-
-gender_count_plot
-income_count_plot
+SE_data["ln_Income87"] <- log((SE_data$Income87+1))
+SE_data["ln_Income05"] <- log((SE_data$Income05+1))
 
 ```
 
@@ -196,8 +187,18 @@ head(data.esteem.87, 5)
 2. Write a brief summary with necessary plots about the 10 esteem measurements.
 ```{r}
 
+boxplot(data.esteem.87)
 
+#reshape data to long form vs. wide
 
+data.esteem.87.short <- melt (data.esteem.87, measure.vars =c("Esteem87_1", "Esteem87_2", "Esteem87_3", "Esteem87_4", "Esteem87_5", "Esteem87_6", "Esteem87_7", "Esteem87_8", "Esteem87_9", "Esteem87_10"), variable.name = "Esteem", value.name = "Score") 
+
+head(data.esteem.87.short,5)
+
+SE_87_ggplot <- ggplot(data.esteem.87.short, aes(x=Esteem, y=Score)) 
+SE_87_ggplot + geom_histogram() 
+
+SE_87_boxplot
 
 ```
 
@@ -209,27 +210,204 @@ data.esteem.87.corr
 
 4. PCA on 10 esteem measurements. (centered but no scaling)
 
-    a) Report the PC1 and PC2 loadings. Are they unit vectors? Are they uncorrelated? 
+    a) Report the PC1 and PC2 loadings. Are they unit vectors? Are they uncorrelated? @Charles @Chris - aren't they not unit vectors because we didn't scale it? Idk how to show this... 
+    
+See in below output for PC1 and PC2 loadings. No, they are not unit vectors because they are not scaled. No, the loadings for PC1 and PC2 ar enot uncorrelated. 
+
+```{r}
+#Perform PCA
+PCA.SE.87 <- prcomp(data.esteem.87)  # by default, center=True but scale=FALSE!!!
+
+#Analyze loadings
+PCA.SE.87.loading <- PCA.SE.87$rotation
+PCA.SE.87.loading[,1:2]
+
+#Calculating correlation
+cor(PCA.SE.87.loading[,1:2])
+
+```
   
     b) Are there good interpretations for PC1 and PC2? (If loadings are all negative, take the positive loadings for the ease of interpretation)
+
+See above. The loadings for PC1 are relatively similar across each of the Esteem variables, with slightly more weight going towards esteem variables 8-10. A higher PC1 score will result in a higher overall score. 
+    
+The loadings for PC2 suggest that an overall score is significanlty more weighted towards Esteem Variables 8-10. 
   
     c) How is the PC1 score obtained for each subject? Write down the formula.
     
+The PC1 score is calculated as follows: PC1= `PCA.SE.87.loading[1,1]` Esteem87_1_centered + ``PCA.SE.87.loading[2,1]` Esteem87_2_centered + 
+... + `PCA.SE.87.loading[10,1]` Esteem87_10_centered
+    
     d) Are PC1 scores and PC2 scores in the data uncorrelated? 
+
+Yes, the PC1 and PC2 scores are uncorrelated. 
+    
+```{r}
+PCA.SE.87.x <- PCA.SE.87$x[,1:2]
+round(cor(PCA.SE.87.x),10)
+```
+    
     
     e) Plot PVE (Proportion of Variance Explained) and summarize the plot. 
+    
+The PVE plot shows that PC1 explains the largest proportion of variance at ~47%. Between PC1 and PC2, the proporiton of variance explained drops significnalty to ~13%. Additionally, with each subsquent PCA variable, the proportion of variance explained decreases.    
+
+```{r}
+
+#Summary of importance
+summary(PCA.SE.87)$importance
+
+
+#Plot of SVE
+plot(summary(PCA.SE.87)$importance[2,],  
+     ylab="PVE",
+     xlab="Number of PC's",
+     pch = 16, 
+     main="Scree Plot of PVE for SE 87")
+
+```
   
     f) Also plot CPVE (Cumulative Proportion of Variance Explained). What proportion of the variance in the data is explained by the first two principal components?
-  
+    
+    ~60% of the variation is explained by the first two prinicipal compnents. 
+    
+```{r}
+  plot(summary(PCA.SE.87)$importance[3,],  
+     ylab="PVE",
+     xlab="Number of PC's",
+     pch = 16, 
+     main="Scree Plot of Cum PVE for SE 87")
+```
+    
     g) PC’s provide us with a low dimensional view of the self-esteem scores. Use a biplot with the first two PC's to display the data.  Give an interpretation of PC1 and PC2 from the plot. (try `ggbiplot` if you could, much prettier!)
+    
+```{r}
+lim <- c(-.1, .1) 
+biplot(PCA.SE.87,
+       expand = 2,
+       xlim=lim,
+       ylim=lim,
+       main="Biplot of the PC's")
+abline(v=0, h=0)
+```
+    
 
 5. Apply k-means to cluster subjects on the original esteem scores
 
     a) Find a reasonable number of clusters using within sum of squared with elbow rules.
+  
+Using the elbow method, the optimal number of clusters is 3 (k=3). 
+    
+```{r}
+
+#Analyzing impact of different k values (not using built-in functionality )
+set.seed(0)
+
+wss <- function(data.esteem.87, k) {
+  kmeans(data.esteem.87, k, k, nstart = 10)$tot.withinss
+}
+
+k.values <- 2:15
+
+wss_values <- sapply(k.values, 
+                     function(k) kmeans(data.esteem.87[,-1], centers = k)$tot.withinss)
+
+plot(k.values, wss_values,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters K",
+       ylab="Total within-clusters sum of squares")
+
+#clearer to select 3
+fviz_nbclust(data.esteem.87, kmeans, method = "wss")
+
+#Applying k-means to cluster subjects 
+SE.data.87.kmeans <- data.esteem.87 %>% 
+    kmeans(centers = 3 )  # centers: number of cluster
+str(SE.data.87.kmeans) 
+
+```
     
     b) Can you summarize common features within each cluster?
     
+```{r}
+
+#Applying k-means to cluster subjects 
+SE.data.87.kmeans <- data.esteem.87 %>% 
+    kmeans(centers = 3 )  # centers: number of cluster
+str(SE.data.87.kmeans) 
+
+#Calculating cluster averages
+SE_group_mean <- data.esteem.87 %>% 
+    mutate(mean = rowMeans(data.esteem.87)) %>%
+    mutate(group = SE.data.87.kmeans$cluster) %>%
+    select(group, mean)
+
+SE_group_mean_table <- table(SE_group_mean)    
+print(SE_group_mean_table)
+
+data.esteem.87 %>% 
+    mutate(mean = rowMeans(data.esteem.87)) %>%
+    mutate(group = SE.data.87.kmeans$cluster) %>%
+    select(group, mean) %>%
+    group_by(group) %>%
+    summarise(group_mean = mean(mean)) 
+
+
+#Calculating cluster averages
+data.esteem.87 %>% 
+    mutate(mean = rowMeans(data.esteem.87)) %>%
+    mutate(group = SE.data.87.kmeans$cluster) %>%
+    select(group, mean) %>%
+    group_by(group) %>%
+    summarise(group_SD = sd(mean))
+
+
+```
+
+    
     c) Can you visualize the clusters with somewhat clear boundaries? You may try different pairs of variables and different PC pairs of the esteem scores.
+    
+```{r}
+
+#Exploratory visualizations (not using PCA)
+data.frame(
+          Esteem_1 = data.esteem.87[,1],
+          Esteem_2 = data.esteem.87[,2],
+          group = as.factor(SE.data.87.kmeans$cluster)) %>%
+  ggplot(aes(x = Esteem_1, y = Esteem_2, col = group)) +
+  geom_point() +
+  ggtitle("Clustering over two variables")
+
+
+data.frame(
+          Esteem_1 = data.esteem.87[,1],
+          Esteem_10 = data.esteem.87[,10],
+          group = as.factor(SE.data.87.kmeans$cluster)) %>%
+  ggplot(aes(x = Esteem_1, y = Esteem_10, col = group)) +
+  geom_point() +
+  ggtitle("Clustering over two variables")
+
+data.frame(
+          Esteem_3 = data.esteem.87[,3],
+          Esteem_6 = data.esteem.87[,6],
+          group = as.factor(SE.data.87.kmeans$cluster)) %>%
+  ggplot(aes(x = Esteem_3, y = Esteem_6, col = group)) +
+  geom_point() +
+  ggtitle("Clustering over two variables")
+
+```
+
+```{r}
+
+#Exploratory visualizations with PCA 
+data.frame(
+          PCA1 =  PCA.SE.87.x[,1],
+          PCA2 =  PCA.SE.87.x[,2],
+          group = as.factor(SE.data.87.kmeans$cluster)) %>%
+  ggplot(aes(x = PCA1, y = PCA2, col = group)) +
+  geom_point() +
+  ggtitle("Clustering over two variables")
+```
 
 
 6. We now try to find out what factors are related to self-esteem? PC1 of all the Esteem scores is a good variable to summarize one's esteem scores. We take PC1 as our response variable. 
@@ -241,8 +419,65 @@ data.esteem.87.corr
       - Household environment: Imagazine, Inewspaper, Ilibrary, MotherEd, FatherEd, FamilyIncome78. Do set indicators `Imagazine` and `Ilibrary` as factors
     
       - Use PC1 of SVABS as level of intelligence
+      
+```{r}
+
+colnames(SE_data)
+#creating BMI variable 
+SE_data["BMI"] <- (703 * SE_data$Weight05) / ((SE_data$HeightFeet05*12) + SE_data$HeightInch05)^2
+
+#creating ln income
+SE_data$Income05[SE_data$Income05 < 0] <- mean(SE_data$Income05)
+SE_data$Income87[SE_data$Income87 < 0] <- mean(SE_data$Income87)
+
+SE_data["ln_Income87"] <- log((SE_data$Income87+1))
+SE_data["ln_Income05"] <- log((SE_data$Income05+1))
+
+#Creating PC1
+PC1 <- PCA.SE.87.x[,1]
+
+#Creating dataframe for regression
+SE_data_lm <- data.frame(
+  gender = SE_data$Gender,
+  PC1 = PC1,
+  ln_Income05 = SE_data$ln_Income05, 
+  ln_Income87 = SE_data$ln_Income87, 
+  job_type = SE_data$Job05, 
+  BMI = SE_data$BMI, 
+  Imag = SE_data$Imagazine, 
+  Ilib = SE_data$Ilibrary, 
+  Inews = SE_data$Inewspaper, 
+  MomEd = SE_data$MotherEd, 
+  DadEd = SE_data$FatherEd,
+  FamIncome = SE_data$FamilyIncome78
+)
+
+
+#Converting Imag and Ilib to factors 
+SE_data_lm$Ilib <- as.factor(SE_data_lm$Ilib)
+SE_data_lm$Imag <- as.factor(SE_data_lm$Imag)
+SE_data_lm$Inews <- as.factor(SE_data_lm$Inews)
+
+
+```
+
         
     b)   Run a few regression models between PC1 of all the esteem scores and factors listed in a). Find a final best model with your own criterion. 
+    
+```{r}
+
+#calculating correlation plot 
+cor(SE_data_lm[sapply(SE_data_lm, is.numeric)])
+#Mom/DadEd highly correlated 
+
+
+model_1 <- lm(PC1 ~ . -  BMI - Imag - Ilib - ln_Income87, data=SE_data_lm)
+summary(model_1)
+
+
+
+```
+
 
       - How did you land this model? Run a model diagnosis to see if the linear model assumptions are reasonably met. 
         
