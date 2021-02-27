@@ -30,7 +30,7 @@ knitr::opts_chunk$set(echo = FALSE, fig.width=8, fig.height=4)
 options(scipen = 0, digits = 3)  # controls base R output
 # check if you have ISLR package, if not, install it
 if(!require('pacman')) {install.packages('pacman')}
-pacman::p_load(ISLR, tidyverse, data.table, skimr, ggplot2, dplyr) # add the packages needed
+pacman::p_load(ISLR, tidyverse, data.table, skimr, ggplot2, dplyr, leaps, car, GGally, reshape2) # add the packages needed
 ```
 
 
@@ -129,10 +129,6 @@ The following 10 questions are answered as 1: strongly agree, 2: agree, 3: disag
 
 Load the data. Do a quick EDA to get familiar with the data set. Pay attention to the unit of each variable. Are there any missing values?
 
-@Chris @Charles
-Observations: (1) negative income (2) Blank values for Job description 
-TBC: have not finished, but got bored
-
 
 ```{r}
 getwd()
@@ -151,8 +147,6 @@ SE_data %>%
   group_by(Job05) %>%
   tally()
 
-ls(SE_data)
-
 #address negative values in income 
 
 SE_data$Income05[SE_data$Income05 < 0] <- mean(SE_data$Income05)
@@ -163,7 +157,10 @@ SE_data["ln_Income05"] <- log((SE_data$Income05+1))
 
 ```
 
-
+Observations 
+1. Negative values for income suggests missing data
+3. Given skewed distribution of income, transformed into log scale 
+2. Empty job descriptions
 
 ## Self esteem evaluation
 
@@ -187,20 +184,61 @@ head(data.esteem.87, 5)
 2. Write a brief summary with necessary plots about the 10 esteem measurements.
 ```{r}
 
-boxplot(data.esteem.87)
-
 #reshape data to long form vs. wide
 
 data.esteem.87.short <- melt (data.esteem.87, measure.vars =c("Esteem87_1", "Esteem87_2", "Esteem87_3", "Esteem87_4", "Esteem87_5", "Esteem87_6", "Esteem87_7", "Esteem87_8", "Esteem87_9", "Esteem87_10"), variable.name = "Esteem", value.name = "Score") 
 
 head(data.esteem.87.short,5)
 
-SE_87_ggplot <- ggplot(data.esteem.87.short, aes(x=Esteem, y=Score)) 
-SE_87_ggplot + geom_histogram() 
+#create boxplot
+SE_87_boxplot <- ggplot(data.esteem.87.short, aes(x=Esteem, y=Score)) 
+SE_87_boxplot + geom_boxplot() 
 
-SE_87_boxplot
+#Aggregate analysis 
+
+SE_data_87_mean <- colMeans(data.esteem.87)
+SE_data_87_mean <-SE_data_87_mean[order(SE_data_87_mean)]
+SE_data_87_mean
+
+#Disaggregated analysis 
+
+#create histogram Esteem 1 
+SE_87_histplot1 <- ggplot(data.esteem.87, aes(data.esteem.87$Esteem87_1)) 
+SE_87_histplot1 + geom_histogram() 
+
+#create histogram Esteem 2 
+SE_87_histplot2 <- ggplot(data.esteem.87, aes(data.esteem.87$Esteem87_2)) 
+SE_87_histplot2 + geom_histogram() 
+
+#create histogram Esteem 9
+SE_87_histplot9 <- ggplot(data.esteem.87, aes(data.esteem.87$Esteem87_9)) 
+SE_87_histplot9 + geom_histogram() 
+
+#create scatter plot Esteem 1 vs. Esteem 2
+SE_87_scatplot12 <- ggplot(data.esteem.87, aes(x=Esteem87_1, y=Esteem87_2)) 
+SE_87_scatplot12 + geom_point() 
+
+
+#create scatter plot Esteem 1 vs. Esteem 3
+SE_87_scatplot13 <- ggplot(data.esteem.87, aes(x=Esteem87_1, y=Esteem87_3)) 
+SE_87_scatplot13 + geom_point() 
+
+
+#create scatter plot Esteem 1 vs. Esteem 4
+SE_87_scatplot14 <- ggplot(data.esteem.87, aes(x=Esteem87_1, y=Esteem87_4)) 
+SE_87_scatplot14 + geom_point() 
+
+#create scatter plot Esteem 1 vs. Esteem 10
+SE_87_scatplot110 <- ggplot(data.esteem.87, aes(x=Esteem87_1, y=Esteem87_10)) 
+SE_87_scatplot110 + geom_point() 
+
 
 ```
+Key takeaways:
+(1) Esteem Variables 1-3 have higher average scores relative to the other Esteem Variables, in particular Esteem 7-10. 
+(2) This is also suggested in the historgrams, which show that Esteem Values 1-3 are heavily skewed left, whereas 7-10 include greater concerntration in the 1 & 2 score buckets. 
+(3) Given the discrete nature of the score values, it's difficult to discern significant insights from the scatter plots of individual Esteem Values. 
+
 
 3. Do esteem scores all positively correlated? Report the pairwise correlation table and write a brief summary.
 ```{r}
@@ -208,11 +246,14 @@ data.esteem.87.corr <- cor(data.esteem.87)
 data.esteem.87.corr
 ```
 
+The correlation tables suggests that all of the esteem variables are positively correlated. However, some are more directionally correlated than others. As suggested in the EDA insights above, Esteem variables 1-5 are more positively correlated with eachother than they are with variables 6-10. The inverse relationship is true for variables 6-10 relative to eachother and relative to 1-5.  
+
+
 4. PCA on 10 esteem measurements. (centered but no scaling)
 
-    a) Report the PC1 and PC2 loadings. Are they unit vectors? Are they uncorrelated? @Charles @Chris - aren't they not unit vectors because we didn't scale it? Idk how to show this... 
+    a) Report the PC1 and PC2 loadings. Are they unit vectors? Are they uncorrelated? 
     
-See in below output for PC1 and PC2 loadings. No, they are not unit vectors because they are not scaled. No, the loadings for PC1 and PC2 ar enot uncorrelated. 
+See in below output for PC1 and PC2 loadings. No, they are not unit vectors because they are not scaled. No, the loadings for PC1 and PC2 are not uncorrelated. 
 
 ```{r}
 #Perform PCA
@@ -296,7 +337,7 @@ abline(v=0, h=0)
 
     a) Find a reasonable number of clusters using within sum of squared with elbow rules.
   
-Using the elbow method, the optimal number of clusters is 3 (k=3). 
+Using the elbow method, the optimal number of clusters is 3 (i.e., k=3). 
     
 ```{r}
 
@@ -364,6 +405,11 @@ data.esteem.87 %>%
 
 ```
 
+Key observations:
+(1) Cluster 1 has the largest mean, followed by Cluster 2, and then Cluster 3, suggesting that cluster 1 has on average higher overall esteem scores across each of the esteem variables. 
+(2) Cluster 1 is heavily skewed left, and thus biased towards higher averages, whereas Cluster 2 and Cluster 3 are normally distributed acrosse a range of values
+(3) While Cluster 2 generally has high scores on average, occasionally low scores occur in Esteem variables 5-10. Whereas, Cluster 3 on average incldues a mix of low and high scores 
+
     
     c) Can you visualize the clusters with somewhat clear boundaries? You may try different pairs of variables and different PC pairs of the esteem scores.
     
@@ -397,6 +443,8 @@ data.frame(
 
 ```
 
+It is difficult to visualize the clusters by plotting each of the esteem variables due to the discrete nature of the scores. However, we can generally see that Group 1 has higher scores across the variables relative to 2 and 3. Further cluster 2 scores are typically greater than group 3. 
+
 ```{r}
 
 #Exploratory visualizations with PCA 
@@ -409,6 +457,7 @@ data.frame(
   ggtitle("Clustering over two variables")
 ```
 
+However, using results of the PCA analysis we are able to better visualize the relationships between each of the Esteem Variables. Our Analysis still stands however, showing higher overall scores for group 1, relative to the other clusters. Further, we can see the impact of higher scores for Esteem variables 1-4 in the higher overall PCA1 scores for group 2 relative to group 4. 
 
 6. We now try to find out what factors are related to self-esteem? PC1 of all the Esteem scores is a good variable to summarize one's esteem scores. We take PC1 as our response variable. 
 
@@ -436,14 +485,13 @@ SE_data["ln_Income05"] <- log((SE_data$Income05+1))
 #Creating PC1
 PC1 <- PCA.SE.87.x[,1]
 
+
+
 #Creating dataframe for regression
 SE_data_lm <- data.frame(
   gender = SE_data$Gender,
   PC1 = PC1,
-  ln_Income05 = SE_data$ln_Income05, 
-  ln_Income87 = SE_data$ln_Income87, 
-  job_type = SE_data$Job05, 
-  BMI = SE_data$BMI, 
+  ln_Income87 = SE_data$ln_Income87,
   Imag = SE_data$Imagazine, 
   Ilib = SE_data$Ilibrary, 
   Inews = SE_data$Inewspaper, 
@@ -459,6 +507,7 @@ SE_data_lm$Imag <- as.factor(SE_data_lm$Imag)
 SE_data_lm$Inews <- as.factor(SE_data_lm$Inews)
 
 
+
 ```
 
         
@@ -470,24 +519,52 @@ SE_data_lm$Inews <- as.factor(SE_data_lm$Inews)
 cor(SE_data_lm[sapply(SE_data_lm, is.numeric)])
 #Mom/DadEd highly correlated 
 
+#pairwise analysis
+SE_data_lm %>%   
+  select_if(is.numeric) %>%
+  select(ln_Income87, PC1, MomEd, DadEd) %>%
+  ggpairs()
 
-model_1 <- lm(PC1 ~ . -  BMI - Imag - Ilib - ln_Income87, data=SE_data_lm)
+
+```
+
+```{r}
+#model evaluation: Comparing impact of highly correlated variables 
+model_Dad <- lm(PC1 ~ DadEd, data=SE_data_lm)
+summary(model_Dad)
+
+model_Mom <- lm(PC1 ~ MomEd, data=SE_data_lm)
+summary(model_Mom)
+
+#model 1: all variables
+model_1 <- lm(PC1 ~ ., data=SE_data_lm)
 summary(model_1)
 
+#using regsubsets
+fit.SE <- regsubsets(PC1 ~., SE_data_lm , nvmax=25, method="exhaustive")
+summary(fit.SE)
 
+f.e <- summary(fit.SE)
+
+#fit CP values
+plot(f.e$cp, xlab="Number of predictors",
+ylab="Cp", col="red", pch=16)
+
+
+#final model
+final <- lm(PC1 ~ . -DadEd, data=SE_data_lm)
+summary(final)
 
 ```
 
 
       - How did you land this model? Run a model diagnosis to see if the linear model assumptions are reasonably met. 
+      
+We selected variables based on the logic of how they might influence self-esteem -- e.g., we did not include BMI as it is only available for 2005, which would not influece the self esteem scores in previous years because weight may change. Our final model was selected using cp analysis, which suggested that using all of the variables would minimize prediction error the most. However, we decided to exclude the DadEd variable as it was highly correlated with MomEd, presenting the issue of multicollinearity. 
         
       - Write a summary of your findings. In particular, explain what and how the variables in the model affect one's self-esteem. 
         
-
-
-
-
-
+Using our final model, we conclude that Family related variables in general have the greatest impact on your self-esteem. Specifically, Whether someone in your familyt reguarly red the news, as well as the education level of your mother. Additionally, gender also impacts your self-esteem, with males having a slightly higher self-esteem relative to females. 
 
 
 # Case study 2: Breast cancer sub-type
