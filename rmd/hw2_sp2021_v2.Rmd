@@ -540,119 +540,616 @@ brca <- brca[,-1]
 x_patient <- fread("data/brca_x_patient.csv")
 ```
 
-
 # Case study 3: Auto data set
 
-This question utilizes the `Auto` dataset from ISLR. The original dataset contains 408 observations about cars. It is similar to the CARS dataset that we use in our lectures. To get the data, first install the package ISLR. The `Auto` dataset should be loaded automatically. We'll use this dataset to practice the methods learn so far. 
-Original data source is here: https://archive.ics.uci.edu/ml/datasets/auto+mpg
+This question utilizes the `Auto` dataset from ISLR. The original dataset contains 408 observations about cars. It is similar to the CARS dataset that we use in our lectures. To get the data, first install the package ISLR. The `Auto` dataset should be loaded automatically. We'll use this dataset to practice the methods learn so far. Original data source is here: <https://archive.ics.uci.edu/ml/datasets/auto+mpg>
 
-Get familiar with this dataset first. Tip: you can use the command `?ISLR::Auto` to view a description of the dataset. 
+Get familiar with this dataset first. Tip: you can use the command `?ISLR::Auto` to view a description of the dataset.
+
+```{r load auto data, message=FALSE, echo=FALSE, message=FALSE}
+pacman::p_load(ISLR)
+cs3.auto<- Auto
+```
 
 ## EDA
+
 Explore the data, with particular focus on pairwise plots and summary statistics. Briefly summarize your findings and any peculiarities in the data.
 
+```{r Auto EDA, message=FALSE, warning=FALSE}
+pacman::p_load(gridExtra)
+#Check Variable Names
+names(cs3.auto)
+#view variables 
+skim(cs3.auto)
+cs3.auto%>% 
+  group_by(year) %>% 
+  tally()
+#summarize variables 
+cs3.auto %>% summary()
+
+#compare pairwise plots 
+p.mpg_cyl<-cs3.auto %>% ggplot(aes(x=cylinders, y=mpg, color=origin)) +
+  geom_point() +
+  geom_smooth(method="lm", formula=y~x, se=F, color="red") + 
+  #facet_wrap(~year)+
+  theme_bw()+
+  theme(legend.position="none")+ 
+  labs(title="mpg on cylinders")
+p.mpg_dis<-cs3.auto %>% ggplot(aes(x=displacement, y=mpg, color=origin)) +
+  geom_point() +
+  geom_smooth(method="lm", formula=y~x, se=F, color="red") + 
+  #facet_wrap(~year)+
+  theme_bw()+
+  theme(legend.position="none")+ 
+  labs(title="mpg on displacement")
+p.mpg.horse<-cs3.auto %>% ggplot(aes(x=horsepower, y=mpg, color=origin)) +
+  geom_point() +
+  geom_smooth(method="lm", formula=y~x, se=F, color="red") + 
+  #facet_wrap(~year)+
+  theme_bw()+
+  theme(legend.position="none")+ 
+  labs(title="mpg on horsepower")
+p.mpg_weight<-cs3.auto %>% ggplot(aes(x=weight, y=mpg, color=origin)) +
+  geom_point() +
+  geom_smooth(method="lm", formula=y~x, se=F, color="red") + 
+  #facet_wrap(~year)+
+  theme_bw()+
+  theme(legend.position="none")+ 
+  labs(title="mpg on weight")
+p.mpg_acc<-cs3.auto %>% ggplot(aes(x=acceleration, y=mpg, color=origin)) +
+  geom_point() +
+  geom_smooth(method="lm", formula=y~x, se=F, color="red") + 
+  #facet_wrap(~year)+
+  theme_bw()+
+  theme(legend.position="none")+ 
+  labs(title="mpg on acceleration")
+p.mpg_yr<-cs3.auto %>% ggplot(aes(x=year, y=mpg, color=origin)) +
+  geom_point() +
+  geom_smooth(method="lm", formula=y~x, se=F, color="red") + 
+  #facet_wrap(~year)+
+  theme_bw()+
+  theme(legend.position="none")+ 
+  labs(title="mpg on year")
+p.mpg_origin<-cs3.auto %>% ggplot(aes(x=origin, y=mpg, color=origin)) +
+  geom_point() +
+  geom_smooth(method="lm", formula=y~x, se=F, color="red") + 
+  #facet_wrap(~year)+
+  theme_bw()+
+  theme(legend.position="none")+ 
+  labs(title="mpg on origin")
+gridExtra::grid.arrange(p.mpg_cyl, p.mpg_dis, p.mpg.horse, p.mpg_weight, p.mpg_acc, p.mpg_yr, p.mpg_origin, ncol=4)
+
+# using pairs
+cs3.pairwise<-cs3.auto %>%
+  select(-year, -origin, -name) %>%
+  pairs()
+
+# logging MPG
+par(mfrow=c(2,2))
+plot(cs3.auto$displacement, cs3.auto$mpg, pch=16)
+plot(1/cs3.auto$displacement, cs3.auto$mpg, pch=16) # looks better!
+  cs3.auto$disp.2<-1/cs3.auto$displacement
+plot(cs3.auto$horsepower, cs3.auto$mpg, pch=16)
+plot(1/cs3.auto$horsepower, cs3.auto$mpg, pch=16) # looks better! 
+   cs3.auto$horse.2<-1/cs3.auto$displacement
+
+```
+
+### EDA Answer
+
+-   We saw no missing data through either the ::skim:: or ::tally:: functions\
+
+-   Using the summary function, we observed:
+
+-   `acceleration`, `year` were somewhat normal.
+
+-   `origin`, and `name` appeared to be categorical and factor variables respectively\
+
+-   In doing a pairwise comparison, we noticed:
+
+    -   `mpg` interacted with `displacement` and `horsepower` in a way that may be non-linear. To correct this we compared them to 1/the data, and these variables looked better so we stored them.
 
 ## What effect does `time` have on `MPG`?
 
-a) Start with a simple regression of `mpg` vs. `year` and report R's `summary` output. Is `year` a significant variable at the .05 level? State what effect `year` has on `mpg`, if any, according to this model. 
+a)  Start with a simple regression of `mpg` vs. `year` and report R's `summary` output. Is `year` a significant variable at the .05 level? State what effect `year` has on `mpg`, if any, according to this model.
 
-b) Add `horsepower` on top of the variable `year` to your linear model. Is `year` still a significant variable at the .05 level? Give a precise interpretation of the `year`'s effect found here. 
+```{r time on MPG simple, message=FALSE, warning=FALSE}
+#build model
+cs3.lm.a<-lm(mpg~year, data=cs3.auto)
+# print model
+print(summary(cs3.lm.a))
+#check confidence intervals 
+confint(cs3.lm.a, level=.95)  
+#plot model diagnoses 
+##   Check linearity and homoscedasticity
+plot(cs3.lm.a$fitted.values, cs3.lm.a$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  
 
-c) The two 95% CI's for the coefficient of year differ among (i) and (ii). How would you explain the difference to a non-statistician?
+##  Check normality 
+qqnorm(cs3.lm.a$residuals)
+qqline(cs3.lm.a$residuals, lwd=4, col="blue")
 
-d) Create a model with interaction by fitting `lm(mpg ~ year * horsepower)`. Is the interaction effect significant at .05 level? Explain the year effect (if any). 
+```
+
+### answer: effect of time on MPG
+
+From the simple regression of `mpg` on `year` we see that year is statistically significant at the .05 level. According to this model, one additional year would increase the mpg by 1.2, though could range from 1.06 to 1.4. This only exlplains \~40% of the variance. Something else to note is that the model's tails do begin to violate normality.
+
+b)  Add `horsepower` on top of the variable `year` to your linear model. Is `year` still a significant variable at the .05 level? Give a precise interpretation of the `year`'s effect found here.
+
+```{r add horsepower, message=FALSE, warning=FALSE}
+# take one 
+cs3.lm.b<-lm(mpg~year+horsepower, data=cs3.auto)
+print(summary(cs3.lm.b))
+confint(cs3.lm.b, level=.95)
+#plot model diagnoses 
+##   Check linearity and homoscedasticity
+plot(cs3.lm.b$fitted.values, cs3.lm.b$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  
+
+##  Check normality 
+qqnorm(cs3.lm.b$residuals)
+qqline(cs3.lm.b$residuals, lwd=4, col="blue")
+# try it with the adjusted horsepower data
+cs3.lm.badj<-lm(mpg~year+horse.2, data=cs3.auto)
+print(summary(cs3.lm.badj))
+confint(cs3.lm.b, level=.95)
+#plot model diagnoses 
+##   Check linearity and homoscedasticity
+plot(cs3.lm.badj$fitted.values, cs3.lm.badj$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  
+
+##  Check normality 
+qqnorm(cs3.lm.badj$residuals)
+qqline(cs3.lm.badj$residuals, lwd=4, col="blue")
+
+```
+
+### answer: adding horsepower to the model
+
+Yes, year is still significant at the .05 level. In this model, we would observe that holding the `horsepower` of a car constant, every additional `year` increases the mpg by 0.66 mpg, with a 95% confidence interval ranging from .53, to .79. This version of the model explains \~69% of the variance and has a lower RSE, so it does seem to be a better model fit overall. THat being said, the model diagnoses show that there is a bit of a pattern to the residuals, suggesting that linearity and homoscedasticity could be under threat.
+
+We took this as an opportunity to try our adjusted horsepower data, and when using the adjusted horsepower data, we actually see an even lower RSE at 3.51, and \~80% of variance explained. The normality and homoscedasticity plot looks even better, so this may be a stronger model to keep, or there may be other synergies.
+
+c)  The two 95% CI's for the coefficient of year differ among (i) and (ii). How would you explain the difference to a non-statistician? \#\#\# answer: explain the different Confidence Intervals to a non-statistician Yes, the CI's are different for `year` in each model. I would tell a non-statistician that by adding another variable to the model we reduced the ambiguity in how mpg varies, and were more accurate in how much of that ambiguity is explained by `year`. This is why the range went from .34 to .26.
+
+d)  Create a model with interaction by fitting `lm(mpg ~ year * horsepower)`. Is the interaction effect significant at .05 level? Explain the year effect (if any).
+
+```{r interaction effect, message=FALSE, warning=FALSE}
+cs3.lm.d<-lm(mpg~year*horsepower, data=cs3.auto)
+print(summary(cs3.lm.d))
+
+# model diagnoses 
+confint(cs3.lm.b, level=.95)
+#plot model diagnoses 
+##   Check linearity and homoscedasticity
+plot(cs3.lm.d$fitted.values, cs3.lm.b$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  
+
+##  Check normality 
+qqnorm(cs3.lm.d$residuals)
+qqline(cs3.lm.d$residuals, lwd=4, col="blue")
+```
+
+### answer: interaction effect of horsepower on year
+
+Based on this model, yes, the interaction effect is statistically significant at the .05 level. We see all variables have p-values nearing zero which allows us to reject the null hypothesis, and the F-statistic itself is quite large. We can interpret year as: an increase in the year is associated with a change in mpg equivalent to (2.19e+00 + -1.6e-02) x horsepower. The model does fit well, with 75% of variance explained. The model diagnoses appear slightly better than under the prior model.Practically, this effect is not that substantial.
 
 ## Categorical predictors
 
 Remember that the same variable can play different roles! Take a quick look at the variable `cylinders`, and try to use this variable in the following analyses wisely. We all agree that a larger number of cylinders will lower mpg. However, we can interpret `cylinders` as either a continuous (numeric) variable or a categorical variable.
 
-a) Fit a model that treats `cylinders` as a continuous/numeric variable. Is `cylinders` significant at the 0.01 level? What effect does `cylinders` play in this model?
+a)  Fit a model that treats `cylinders` as a continuous/numeric variable. Is `cylinders` significant at the 0.01 level? What effect does `cylinders` play in this model?
 
-b) Fit a model that treats `cylinders` as a categorical/factor. Is `cylinders` significant at the .01 level? What is the effect of `cylinders` in this model? Describe the `cylinders` effect over `mpg`. 
+```{r cylinders part a, message=FALSE, warning=FALSE}
+class(cs3.auto$cylinders)
+cs3.lm.cat1<- lm(mpg~cylinders, data=cs3.auto)
+cs3.lm.cat1.s<-summary(cs3.lm.cat1)
+confint(cs3.lm.cat1)
+print(cs3.lm.cat1.s)
+#plot model diagnoses 
+##   Check linearity and homoscedasticity
+plot(cs3.lm.cat1$fitted.values, cs3.lm.cat1$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  
 
-c) What are the fundamental differences between treating `cylinders` as a continuous and categorical variable in your models? 
+##  Check normality 
+qqnorm(cs3.lm.cat1$residuals)
+qqline(cs3.lm.cat1$residuals, lwd=4, col="blue")
 
-d) Can you test the null hypothesis: fit0: `mpg` is linear in `cylinders` vs. fit1: `mpg` relates to `cylinders` as a categorical variable at .01 level?  
+```
 
+### Answer: Numerical Cylinders
+
+With Cylinders as a numerical variable, it is statistically significant at the .01 level, and for every additional cylinder, the mpg goes down by \~3.5 mpg, though it could be as much as 3.8, or as little as 3.27. The model displays decent fit with `r cs3.lm.cat1.s$r.squared` of the variance explained. The model diagnoses are good, but do suggest that this may be more of a categorical dataset.
+
+b)  Fit a model that treats `cylinders` as a categorical/factor. Is `cylinders` significant at the .01 level? What is the effect of `cylinders` in this model? Describe the `cylinders` effect over `mpg`.
+
+```{r categorical cylinders, warning=FALSE, message=FALSE}
+#refactor the data
+cs3.auto$fact.cyl<-as.factor(cs3.auto$cylinders)
+#run the model 
+cs3.lm.cat2<- lm(mpg~fact.cyl, data=cs3.auto)
+#confirm the levels to see what the default is 
+levels(cs3.auto$fact.cyl)
+cs3.lm.cat2.s<-summary(cs3.lm.cat2)
+print(cs3.lm.cat2.s)
+confint(cs3.lm.cat2)
+#check the assumptions 
+#plot model diagnoses 
+##   Check linearity and homoscedasticity
+plot(cs3.lm.cat2$fitted.values, cs3.lm.cat2$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  
+
+##  Check normality 
+qqnorm(cs3.lm.cat2$residuals)
+qqline(cs3.lm.cat2$residuals, lwd=4, col="blue")
+# Check with Anova
+pacman::p_load(car)
+Anova(cs3.lm.cat2)
+```
+
+### Answer: Categorical Cylinders
+
+From the new, categorical model, we see that the statistical significance varies depending on which cylinder count we are considering. In this model:
+
+-   3-cylinder vehicle would, on average, have 20.5 mpg, ranging from 16 to 25 mpg.
+
+-   Relative to a 3 cylinder vehicle
+
+    -   a 4 cylinder vehicle would increase mpg by 8.7 (ranging from 4 to 13)
+
+    -   a 5 cylinder vehicle would increase mpg less, by only 6.8 ( or possibly decreasing mpg by 0.24 up to an increase of 13.87)
+
+    -   a 6 cylinder vehicle has no statistically significant effect -\> we cannot reject the null that there is no relationship, and
+
+    -   an 8 cylinder vehicle is statically significant in that it will, on average, decrease the mpg by 5.6 (as much as 10 or as little as 1 mpg decrease.
+
+The model as a whole is still statistically significant based on the F-score, and displays good fit with `r cs3.lm.cat2.s$r.squared`
+
+c)  What are the fundamental differences between treating `cylinders` as a continuous and categorical variable in your models?
+
+-   The fundamental differences between `cylinders` as continuous and as categorical are: As a continuous variable, we are imposing linearity, normality of residuals, and homoscedasticity, and looking for an average effect, assuming the same intercept. In other words, the effects we see are across all categories, and some cylinder vehicles may have very different mpg, all else equal, and we would not see this effect because it would be grouped into a larger coefficient. This is because the coefficient we get back is what we would expect on average for an increase in cylinders.
+
+-   In contrast, with a a categorical variable is 'flexible' in that it says, we can hold all else equal, and look at the effect of cylinders between different groups. By allowing the intercept to shift, we are parsing out the specific effect of a given cylinder class.
+
+d)  Can you test the null hypothesis: fit0: `mpg` is linear in `cylinders` vs. fit1: `mpg` relates to `cylinders` as a categorical variable at .01 level?
+
+```{r test cat nulls, message=FALSE, warning=FALSE}
+# Recall linear model
+cs3.lm.cat1 
+# Recall categorical model 
+cs3.lm.cat2
+# use little a anova to compare F-Tests 
+cs3.anov.d<-anova(cs3.lm.cat1, cs3.lm.cat2) 
+cs3.anov.d
+```
+
+### Answer: Compare Linear to Categorical
+
+Using little A `anova()` we compared the linear model to the categorical model. This yielded a F-Statistic of `r cs3.anov.d$F`which was statistically significant with a p-value of `r cs3.anov.d$Pr(>F)`. At any reasonable level we reject the null hypothesis that the model should be linear, and we instead use the categorical model.
 
 ## Results
 
 Final modeling question: we want to explore the effects of each feature as best as possible. You may explore interactions, feature transformations, higher order terms, or other strategies within reason. The model(s) should be as parsimonious (simple) as possible unless the gain in accuracy is significant from your point of view.
-  
-a) Describe the final model. Include diagnostic plots with particular focus on the model residuals and diagnoses.
 
-b) Summarize the effects found.
+```{r final results, warning=FALSE, message=FALSE}
+options(scipen=8)
+#Recall names
+names(cs3.auto)
+#build data table for final model
+cs3.auto.2<- cs3.auto %>% select(-disp.2, -horse.2, -cylinders, -name) %>% mutate(origin=factor(origin))
+# fit all
+fit.all<-lm(mpg~., cs3.auto.2)
+fit.all.s<-summary(fit.all)
+print(fit.all.s)
+# remove acceleration - weird to interpret and not statistically significant
+cs3.auto.3<- cs3.auto.2 %>% select (-acceleration)
+fit.all.2<- lm(mpg~.,data=cs3.auto.3)
+fit.all.2.s<-summary(fit.all.2)
+print(fit.all.2.s)# model looks like everything is statistically significant. 
+# Check Anova 
+Anova(fit.all.2) # all good
 
-c) Predict the `mpg` of the following car: A red car built in the US in 1983 that is 180 inches long, has eight cylinders, displaces 350 cu. inches, weighs 4000 pounds, and has a horsepower of 260. Also give a 95% CI for your prediction.
+# Model Diagnostics
+##   Check linearity and homoscedasticity
+plot(fit.all.2$fitted.values, fit.all.2$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  # problem, there is a fan. 
+
+##  Check normality 
+qqnorm(fit.all.2$residuals)
+qqline(fit.all.2$residuals, lwd=4, col="blue")
+
+#use logs for non-linear data 
+cs3.auto.4<-cs3.auto.3 %>% 
+   mutate(disp.2=log(displacement), 
+          horse.2=log(horsepower)) %>% 
+  select(-displacement, -horsepower)
+
+#rerun model
+fit.all.3<-lm(mpg~., data=cs3.auto.4)
+fit.all.3.s<-summary(fit.all.3)
+print(fit.all.3.s)
+
+# Run ANOVA to check on origin overall 
+Anova(fit.all.3) # looks like we still want it.
+
+#remove log.displacement due to low value. 
+cs3.auto.5<-cs3.auto.4 %>% select(-disp.2)
+fit.all.4<-lm(mpg~., data=cs3.auto.5)
+fit.all.4.s<-summary(fit.all.4)
+print(fit.all.4.s)
+
+Anova(fit.all.4) # looks good
+# Model Diagnostics
+##   Check linearity and homoscedasticity
+plot(fit.all.4,1)
+ # NOT BETTER
+
+# use pairs to see what's up 
+pairs(cs3.auto.5) # mpg is still having a non-linear relationship with other variables. will log it. 
+
+fit.all.5<-lm(log(mpg)~., data=cs3.auto.5)
+fit.all.5.s<-summary(fit.all.5)
+print(fit.all.5.s)# looks good
+
+#Anova
+Anova(fit.all.5) #looks good
+# Model Diagnostics
+##   Check linearity and homoscedasticity
+plot(fit.all.5$fitted.values, fit.all.5$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  # problem, there is a fan. 
+
+##  Check normality 
+qqnorm(fit.all.5$residuals)
+qqline(fit.all.5$residuals, lwd=4, col="blue")# Like this a lot more. 
+
+print(fit.all.5.s)
+# one last test
+
+fit.all.6<-lm(log(mpg)~weight + year+ fact.cyl + horse.2, data=cs3.auto.5) # remove origin for ease of interpretation 
+fit.all.6.s<-summary(fit.all.6)
+print(fit.all.6.s)# looks good Compared to model with origin, the variance explained is nearly the same. 
+
+#Anova
+Anova(fit.all.6) #looks good
+
+# Model Diagnostics
+##   Check linearity and homoscedasticity
+plot(fit.all.6$fitted.values, fit.all.6$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  # problem, there is a fan. 
+
+##  Check normality 
+qqnorm(fit.all.6$residuals)
+qqline(fit.all.6$residuals, lwd=4, col="blue")# Like this a lot more. 
+# print final models for comparison 
+print(fit.all.5.s)
+print(fit.all.6.s)
+
+## one last last test
+
+fit.all.7<-lm(log(mpg)~ year+ fact.cyl + horse.2, data=cs3.auto.5) # remove weight because it did nothing 
+fit.all.7.s<-summary(fit.all.7)
+print(fit.all.7.s)# lost .05 of r.squared and cylinder is now in question
+
+#Anova
+Anova(fit.all.7) #cylinder looks good
+
+# Model Diagnostics
+##   Check linearity and homoscedasticity
+plot(fit.all.7$fitted.values, fit.all.6$residuals, 
+     pch=16, 
+     main="residual plot")
+abline(h=0, lwd= 4, col="red")  # problem, there is a fan. 
+
+##  Check normality 
+qqnorm(fit.all.7$residuals)
+qqline(fit.all.7$residuals, lwd=4, col="blue")# Like this a lot 
+
+print(fit.all.7.s)
+intercept.all.7<- data.frame(fit.all.7.s$coefficients)
+intercept.all.7<-intercept.all.7 %>% 
+  select(Estimate) %>% 
+  mutate(exp.coeff=exp(Estimate))
+intercept.all.7
+```
+
+a)  Describe the final model. Include diagnostic plots with particular focus on the model residuals and diagnoses.
+
+    ### Answer: final model
+
+    In our final model (above), we predicted the log of mpg using year, categorical cylinders, and the log of horsepower. The model is a very close fit to the data, with an R.Squared of .85, and a relatively small RSE of 0.133. The overall model F-Statistic is quite high, suggesting that we can reject the null hypothesis that this model is not useful. A few points about our model selection:
+
+-   A significant benefit of our model is that it has very high accuracy with only three variables.
+
+-   Our model is slightly more difficult to interpret because we logged both the response and a predcitor variable. We did this because the original model displayed a fan towards the tail of the residual plot which remained present even after logging non-linear predictors. Using `pairs`, we saw that mpg was causing non-linearity and so had to log it as well. This means that to interpret the model we need to caveat that a one unit increase in year is associated with a 1% increase in mpg, for example.
+
+-   In arriving at our final model, we first removed variables which were non-sensical, including `name` and the linear form of cylinders. We then worked backwards, and adjusted the variables to help fix the residual plots. This led us to a model which had higher predictive power because it included origin. However, upon reviewing the summary of that model, we saw that it would be complicated to explain a model with two sets of categorical variables, and retested the model without origin, given that origin had a smaller practical effect than cylinders. The change in R.squared was only .003, and the increase in RSE only .002, which suggests to us that the simpler model is worth the marginal loss of predictive power.
+
+-   We then reviewed the model for practical significance and saw that weight had a minimal effect on MPG, and removed this as well. THe drop was a little higher, and r.squared went down \~.05 to .848. Overall this drop was not so substantial that we felt it was worth keeping weight in the model.
+
+-   The final diagnostic plots show we meet the assumptions of normality, homoscedasticity, and linearity.
+
+b)  Summarize the effects found.
+
+-   each additional year raises the mpg by \~3%,
+
+    -   exp(0.0259)=1.026
+
+        -   (1.026-1) \* 100 = 3%
+
+-   each 1% increase in horsepower decreases mpg by 4%
+
+    -   because both are logged: 1.01\^-.4284 =.95 -1= \~4%
+
+-   A 3-cylinder vehicle would have a mpg \~21. Relative to this,
+
+    -   a 4-cylinder vehicle would be \~20% higher mpg
+
+    -   a 5-cylinder vehicle would be \~9% higher mpg
+
+    -   a 6-cylinder vehicle would be \~4% lower mpg
+
+    -   an 8-cylinder vehicle would be \~9% lower mpg
+
+c)  Predict the `mpg` of the following car: A red car built in the US in 1983 that is 180 inches long, has eight cylinders, displaces 350 cu. inches, weighs 4000 pounds, and has a horsepower of 260. Also give a 95% CI for your prediction.
+```{r predict, warning=FALSE, message=FALSE}
+#recall the model 
+fit.all.7
+
+# create dataset with the associated info
+cs3.predict<-cs3.auto.5[1,]
+cs3.predict <- cs3.predict %>% 
+  select(-weight, -origin) %>% 
+  mutate(
+    year=83, 
+    fact.cyl=as.factor(8), 
+    horse.2=log(260)
+  )
+cs3.predict.lm<-predict(fit.all.7, cs3.predict, interval="confidence", se.fit=T)
+prediction<-data.frame(cs3.predict.lm) %>% 
+  mutate(prediction=exp(fit.fit),
+         predict.lwr=exp(fit.lwr), 
+         predict.upr=exp(fit.upr))
+prediction %>% select(prediction, predict.lwr, predict.upr)
+
+```
 
 
 # Simple Regression through simulations
-    
+
 ## Linear model through simulations
 
 This exercise is designed to help you understand the linear model using simulations. In this exercise, we will generate $(x_i, y_i)$ pairs so that all linear model assumptions are met.
 
-Presume that $\mathbf{x}$ and $\mathbf{y}$ are linearly related with a normal error $\boldsymbol{\varepsilon}$ , such that $\mathbf{y} = 1 + 1.2\mathbf{x} + \boldsymbol{\varepsilon}$. The standard deviation of the error $\varepsilon_i$ is $\sigma = 2$. 
+Presume that $\mathbf{x}$ and $\mathbf{y}$ are linearly related with a normal error $\boldsymbol{\varepsilon}$ , such that $\mathbf{y} = 1 + 1.2\mathbf{x} + \boldsymbol{\varepsilon}$. The standard deviation of the error $\varepsilon_i$ is $\sigma = 2$.
 
 We can create a sample input vector ($n = 40$) for $\mathbf{x}$ with the following code:
 
-```{r, eval = F, echo = TRUE}
+```{r, eval = TRUE, echo = TRUE}
 # Generates a vector of size 40 with equally spaced values between 0 and 1, inclusive
 x <- seq(0, 1, length = 40)
 ```
-
 
 ### Generate data
 
 Create a corresponding output vector for $\mathbf{y}$ according to the equation given above. Use `set.seed(1)`. Then, create a scatterplot with $(x_i, y_i)$ pairs. Base R plotting is acceptable, but if you can, please attempt to use `ggplot2` to create the plot. Make sure to have clear labels and sensible titles on your plots.
 
 ```{r}
+pacman::p_load(gridExtra, ggrepel)
 # TODO
+set.seed(1)
+e<-rnorm(40,sd=2)
+
+# create corresponding vector 
+cs4.data<-data.frame(x) 
+cs4.data<-cs4.data %>% 
+  mutate(y=1+1.2*x+e)
+cs4.data
+# Scatter plot 
+cs4.p1<-cs4.data %>% 
+  ggplot()+
+  geom_point(aes(x=x, y=y ))+
+  labs(title = "Random Plot", y="y=1+1.2(x)+e")
+(cs4.p1)
 ```
 
 ### Understand the model
-i. Find the LS estimates of $\boldsymbol{\beta}_0$ and $\boldsymbol{\beta}_1$, using the `lm()` function. What are the true values of $\boldsymbol{\beta}_0$ and $\boldsymbol{\beta}_1$? Do the estimates look to be good? 
 
-ii. What is your RSE for this linear model fit? Is it close to $\sigma = 2$? 
+i.  Find the LS estimates of $\boldsymbol{\beta}_0$ and $\boldsymbol{\beta}_1$, using the `lm()` function. What are the true values of $\boldsymbol{\beta}_0$ and $\boldsymbol{\beta}_1$? Do the estimates look to be good?
+```{r understand the model, warning=FALSE, message=FALSE}
+cs4.lm1<-lm(y~x, data=cs4.data)
+cs4.lm.s<-summary(cs4.lm1)
+print(cs4.lm.s)
+```
+No, the estimates do not appear to be good. We have a statistically insignificant predictor, x, the model is insignificant, and the r.squared is 0.028. 
 
-ii. What is the 95% confidence interval for $\boldsymbol{\beta}_1$? Does this confidence interval capture the true $\boldsymbol{\beta}_1$?
+ii. What is your RSE for this linear model fit? Is it close to $\sigma = 2$?
+It is 1.73. This is relatively close to sigma=2. 
 
-iii. Overlay the LS estimates and the true lines of the mean function onto a copy of the scatterplot you made above.
+iii. What is the 95% confidence interval for $\boldsymbol{\beta}_1$? Does this confidence interval capture the true $\boldsymbol{\beta}_1$?
+```{r confint cs4, warning=FALSE, message=FALSE}
+confint(cs4.lm1)
+```
+The confidence interval is -1 to 2.85. It does capture the true Beta One of 1.2. 
+
+
+iv. Overlay the LS estimates and the true lines of the mean function onto a copy of the scatterplot you made above.
 
 ```{r}
-# TODO
+cs4.data$ols.y<-cs4.lm1$fitted.values
+cs4.data.long<- cs4.data %>% 
+  mutate(
+    actual.y=y) %>% 
+         select(-y) %>% 
+  mutate(
+    obs=seq(1,40,length=40)) %>% 
+  pivot_longer(
+    cols= c(actual.y,ols.y), 
+    names_to=c("source"), 
+    values_to=c("number"))
+coefs<- cs4.lm.s$coefficients[,1]# create coefs for plot
+cs4.p2 <- cs4.data.long %>% 
+  ggplot(aes(x=x, y=number, group=source, fill=source, label=obs))+
+  geom_point(aes(color=source)) + 
+  geom_text_repel() + 
+  theme_classic()+ 
+  labs(title="plot of actual vs. estimated y values", x="actual x values", y="actual and estimated y values")+ 
+  geom_abline(intercept=coefs[1], slope=coefs[2], lwd=1, color="seagreen")+ 
+  geom_abline(intercept=1, slope=(1.2*cs4.data$x+e), color="red")
+#@maddie and Charles - this one plot below is the one that I'm lease confident in. I can't decide if the red lines should all be one line....
+cs4.p2
 ```
 
 ### diagnoses
 
-i. Provide residual plot where fitted $\mathbf{y}$-values are on the x-axis and residuals are on the y-axis. 
+i.  Provide residual plot where fitted $\mathbf{y}$-values are on the x-axis and residuals are on the y-axis.
 
 ii. Provide a normal QQ plot of the residuals.
 
-iii. Comment on how well the model assumptions are met for the sample you used. 
-
+iii. Comment on how well the model assumptions are met for the sample you used.
 
 ```{r}
 # TODO
+par(mfrow=c(1,2))
+plot(cs4.lm1,1)
+plot(cs4.lm1,2)
 ```
-
-
+This particular model does not fit the data that well. Our assumption of linearity, and homoscedasticity are not met in the residuals plot -> you see a fan, and the line does not follow at h=0. The qqplot is okay, but it does waver a bit. 
 ## Understand sampling distribution and confidence intervals
 
-This part aims to help you understand the notion of sampling statistics and confidence intervals. Let's concentrate on estimating the slope only.  
+This part aims to help you understand the notion of sampling statistics and confidence intervals. Let's concentrate on estimating the slope only.
 
 Generate 100 samples of size $n = 40$, and estimate the slope coefficient from each sample. We include some sample code below, which should guide you in setting up the simulation. Note: this code is easier to follow but suboptimal; see the appendix for a more optimal R-like way to run this simulation.
-```{r, eval = F, echo = TRUE}
+
+```{r, eval = TRUE, echo = TRUE}
 # Inializing variables. Note b_1, upper_ci, lower_ci are vectors
 x <- seq(0, 1, length = 40) 
-n_sim <- 100              # number of simulations
+n_sim <- 100             # number of simulations
 b1 <- 0                   # n_sim many LS estimates of beta_1 (=1.2). Initialize to 0 for now
 upper_ci <- 0             # upper bound for beta_1. Initialize to 0 for now.
 lower_ci <- 0             # lower bound for beta_1. Initialize to 0 for now.
 t_star <- qt(0.975, 38)   # Food for thought: why 38 instead of 40? What is t_star?
 
 # Perform the simulation
-for (i in 1:n_sim){I l
+for (i in 1:n_sim){
   y <- 1 + 1.2 * x + rnorm(40, sd = 2)
   lse <- lm(y ~ x)
   lse_output <- summary(lse)$coefficients
@@ -667,10 +1164,36 @@ results <- as.data.frame(cbind(se, b1, upper_ci, lower_ci))
 rm(se, b1, upper_ci, lower_ci, x, n_sim, b1, t_star, lse, lse_out) 
 ```
 
-i. Summarize the LS estimates of $\boldsymbol{\beta}_1$ (stored in `results$b1`). Does the sampling distribution agree with theory? 
+i.  Summarize the LS estimates of $\boldsymbol{\beta}_1$ (stored in `results$b1`). Does the sampling distribution agree with theory?
+```{r sampling distribution, message=FALSE, warning=FALSE}
+summary(results$b1)
 
-ii.  How many of your 95% confidence intervals capture the true $\boldsymbol{\beta}_1$? Display your confidence intervals graphically. 
+```
+The sampling distribution comes out as approximately normal. It does come close to the theory in that the mean and median are approximately normal. We know that beta1 is actually equal to 1.2, and this is not so far from 1.2 that we would be surprised, but it is also not exactly right. THis may be because 100 samples was not enough. Indeed, when we re-ran the program with n_sim=1,000, we did get a mean and medain of 1.22, which was much closer. So, from this we can see that a sample of only 40 is not bad, but it is still an approximation. Also, even increasing the number of simulations to 10,000, we do not get closer to the true value than we did at 1000. This shows the power of the models. Finally, when we rerun the simulation many times at n=100, we do see that occasionally the mean and median are accurate. 
 
 
+
+ii. How many of your 95% confidence intervals capture the true $\boldsymbol{\beta}_1$? Display your confidence intervals graphically.
+
+```{r graphical 95, message=FALSE, warning=FALSE}
+results <- results %>% mutate(
+  test=if_else(1.2>= lower_ci & 1.2<=upper_ci, "true", "false"), 
+  count=seq(1,100, by=1))
+results.longer<-results %>% pivot_longer(
+  cols=c(upper_ci, lower_ci, b1), 
+  names_to="source", 
+  values_to="numbers")
+
+cs4.falsecount<-table(results$test)[1]
+print(cs4.falsecount)
+cs4.p3<- results.longer %>% filter(source!="b1") %>% 
+  ggplot(aes(x=count, group=count, y=numbers, label=count, shape = source))+
+  geom_point(aes(color=source))+
+  labs(title="Comparing Simulated Confidence Intervals with True Beta.One", x="unique simulation", y="")+ 
+  geom_hline(yintercept=1.2, lwd=2, color="plum1")
+cs4.p3
+
+```
+Only `r cs4.falsecount` confidence intervals missed the true beta, centered on the plum line above. Perhaps this is why in the original model we saw that the p-value was not statistically significant. 
 
 
