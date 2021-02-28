@@ -30,7 +30,7 @@ knitr::opts_chunk$set(echo = FALSE, fig.width=8, fig.height=4)
 options(scipen = 0, digits = 3)  # controls base R output
 # check if you have ISLR package, if not, install it
 if(!require('pacman')) {install.packages('pacman')}
-pacman::p_load(ISLR, tidyverse, data.table, skimr, ggplot2, dplyr, leaps, car, GGally, reshape2) # add the packages needed
+pacman::p_load(ISLR, tidyverse, data.table, skimr, ggplot2, dplyr, leaps, car, GGally, reshape2, factoextra, tinytex) # add the packages needed
 ```
 
 
@@ -131,8 +131,6 @@ Load the data. Do a quick EDA to get familiar with the data set. Pay attention t
 
 
 ```{r}
-getwd()
-setwd("C:/Users/38MMB/Documents/hw-2")
 SE_data <- read.csv("data/NLSY79.csv")
 ```
 
@@ -471,7 +469,6 @@ However, using results of the PCA analysis we are able to better visualize the r
       
 ```{r}
 
-colnames(SE_data)
 #creating BMI variable 
 SE_data["BMI"] <- (703 * SE_data$Weight05) / ((SE_data$HeightFeet05*12) + SE_data$HeightInch05)^2
 
@@ -586,8 +583,9 @@ We first read the data using `data.table::fread()` which is a faster way to read
 ```{r}
 brca <- fread("data/brca_subtype.csv")
 
+
 # get the sub-type information
-brca_subtype <- brca$BRCA_subtype_PAM50
+brca_subtype <- brca$BRCA_Subtype_PAM50
 brca <- brca[,-1]
 ```
 
@@ -1402,7 +1400,7 @@ cs4.p2 <- cs4.data.long %>%
   labs(title="plot of actual vs. estimated y values", x="actual x values", y="actual and estimated y values")+ 
   geom_abline(intercept=coefs[1], slope=coefs[2], lwd=1, color="seagreen")+ 
   geom_abline(intercept=1, slope=(1.2*cs4.data$x+e), color="red")
-#@maddie and Charles - this one plot below is the one that I'm lease confident in. I can't decide if the red lines should all be one line....
+
 cs4.p2
 ```
 
